@@ -1,8 +1,28 @@
 # OKEx WebSocket 数据处理系统架构文档
 
-## 1. 项目结构
+## 1. 项目概述
 
-### 1.1 Maven多模块工程结构
+### 1.1 技术栈
+
+| 分类 | 技术 | 版本/说明 |
+|------|------|-----------|
+| 开发语言 | Java | 8 (JDK 1.8) |
+| 构建工具 | Maven | 3.x |
+| 数据源 | OKEx WebSocket API | 实时行情数据 |
+| 数据库 | MongoDB | 存储蜡烛图数据 |
+| 缓存 | Redis | 技术指标计算结果缓存 |
+| RPC框架 | gRPC | 服务间通信 |
+| 序列化 | Protocol Buffers | 高效数据传输 |
+| WebSocket客户端 | Netty | 高性能网络通信 |
+| 框架 | Spring Boot | 2.x (≥4.3) |
+| 代码简化 | Lombok | 用于简化代码（@RequiredArgsConstructor等） |
+| JSON处理 | Jackson | 数据格式转换 |
+| 日志 | SLF4J | 日志记录API |
+
+## 2. 项目结构
+
+### 2.1 Maven多模块工程结构
+
 ```
 okex-trans-5/
 ├── pom.xml                           # 父工程POM
@@ -30,238 +50,33 @@ okex-trans-5/
         └── example/                  # 使用示例
 ```
 
-## 2. 模块详细设计
+## 3. 模块详细设计
 
-### 2.1 父工程 (okex-trans-5)
+### 3.1 父工程 (okex-trans-5)
 
-#### 2.1.1 POM配置
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+#### 3.1.1 Maven配置
+父工程使用Maven管理多模块项目，主要职责包括：
+- 定义项目基本信息（groupId、artifactId、version）
+- 管理所有模块的依赖版本，确保版本一致性
+- 配置公共插件（Protocol Buffers编译插件、Maven编译插件等）
+- 定义子模块列表（okex-common、okex-server、okex-client）
 
-    <groupId>com.okex</groupId>
-    <artifactId>okex-trans-5</artifactId>
-    <version>1.0.0</version>
-    <packaging>pom</packaging>
+关键依赖包括：gRPC、Protocol Buffers、Netty、Spring Boot（版本2.x，需≥4.3）、MongoDB、Redis、Jackson、Lombok（用于简化代码，提供@RequiredArgsConstructor等注解）等。
 
-    <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        
-        <!-- 版本管理 -->
-        <grpc.version>1.58.0</grpc.version>
-        <protobuf.version>3.24.2</protobuf.version>
-        <netty.version>4.1.100.Final</netty.version>
-        <spring.boot.version>2.7.17</spring.boot.version>
-        <mongodb.version>4.11.1</mongodb.version>
-        <jedis.version>4.4.3</jedis.version>
-        <jackson.version>2.15.2</jackson.version>
-        <slf4j.version>1.7.36</slf4j.version>
-        <logback.version>1.2.12</logback.version>
-        <junit.version>5.10.0</junit.version>
-    </properties>
+### 3.2 公共模块 (okex-common)
 
-    <modules>
-        <module>okex-common</module>
-        <module>okex-server</module>
-        <module>okex-client</module>
-    </modules>
+#### 3.2.1 Maven配置
+okex-common模块是项目的公共模块，提供共享的模型和工具类。
 
-    <dependencyManagement>
-        <dependencies>
-            <!-- gRPC -->
-            <dependency>
-                <groupId>io.grpc</groupId>
-                <artifactId>grpc-bom</artifactId>
-                <version>${grpc.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            
-            <!-- Protocol Buffers -->
-            <dependency>
-                <groupId>com.google.protobuf</groupId>
-                <artifactId>protobuf-java</artifactId>
-                <version>${protobuf.version}</version>
-            </dependency>
-            
-            <!-- Netty -->
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-all</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            
-            <!-- Spring Boot -->
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>${spring.boot.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            
-            <!-- MongoDB -->
-            <dependency>
-                <groupId>org.mongodb</groupId>
-                <artifactId>mongodb-driver-sync</artifactId>
-                <version>${mongodb.version}</version>
-            </dependency>
-            
-            <!-- Redis -->
-            <dependency>
-                <groupId>redis.clients</groupId>
-                <artifactId>jedis</artifactId>
-                <version>${jedis.version}</version>
-            </dependency>
-            
-            <!-- Jackson -->
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-            
-            <!-- 日志 -->
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>ch.qos.logback</groupId>
-                <artifactId>logback-classic</artifactId>
-                <version>${logback.version}</version>
-            </dependency>
-            
-            <!-- 测试 -->
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+主要依赖：
+- Protocol Buffers（序列化框架）
+- Jackson（JSON处理）
+- SLF4J（日志API）
 
-    <build>
-        <extensions>
-            <extension>
-                <groupId>kr.motd.maven</groupId>
-                <artifactId>os-maven-plugin</artifactId>
-                <version>1.7.1</version>
-            </extension>
-        </extensions>
-        
-        <pluginManagement>
-            <plugins>
-                <!-- Protocol Buffers编译插件 -->
-                <plugin>
-                    <groupId>org.xolstice.maven.plugins</groupId>
-                    <artifactId>protobuf-maven-plugin</artifactId>
-                    <version>0.6.1</version>
-                    <configuration>
-                        <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
-                        <pluginId>grpc-java</pluginId>
-                        <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>compile</goal>
-                                <goal>compile-custom</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-                
-                <!-- Maven编译插件 -->
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.11.0</version>
-                    <configuration>
-                        <source>1.8</source>
-                        <target>1.8</target>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
-    </build>
-</project>
-```
+该模块包含项目中使用的通用模型、枚举和工具类，供其他模块依赖使用。
 
-### 2.2 公共模块 (okex-common)
+#### 3.2.2 Protocol Buffers定义
 
-#### 2.2.1 POM配置
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <parent>
-        <groupId>com.okex</groupId>
-        <artifactId>okex-trans-5</artifactId>
-        <version>1.0.0</version>
-    </parent>
-
-    <artifactId>okex-common</artifactId>
-    <packaging>jar</packaging>
-
-    <dependencies>
-        <!-- gRPC -->
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-netty-shaded</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-protobuf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-stub</artifactId>
-        </dependency>
-        
-        <!-- Protocol Buffers -->
-        <dependency>
-            <groupId>com.google.protobuf</groupId>
-            <artifactId>protobuf-java</artifactId>
-        </dependency>
-        
-        <!-- Jackson -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        
-        <!-- 日志 -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.xolstice.maven.plugins</groupId>
-                <artifactId>protobuf-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-```
-
-#### 2.2.2 Protocol Buffers定义
 ```protobuf
 // 文件路径: okex-common/src/main/proto/indicator.proto
 syntax = "proto3";
@@ -289,6 +104,12 @@ service IndicatorService {
   
   // 批量MACD计算
   rpc CalculateMACDBatch(BatchMACDRequest) returns (stream IndicatorResponse);
+  
+  // 十字针(Pinbar)计算
+  rpc CalculatePinbar(PinbarRequest) returns (IndicatorResponse);
+  
+  // 批量十字针(Pinbar)计算
+  rpc CalculatePinbarBatch(BatchPinbarRequest) returns (stream IndicatorResponse);
   
   // 实时指标流
   rpc StreamIndicators(StreamRequest) returns (stream IndicatorResponse);
@@ -337,6 +158,18 @@ message BatchMACDRequest {
   repeated MACDRequest requests = 1;
 }
 
+// 十字针(Pinbar)请求
+message PinbarRequest {
+  BaseRequest base = 1;
+  double body_ratio_threshold = 2;
+  double wick_ratio_threshold = 3;
+}
+
+// 批量十字针(Pinbar)请求
+message BatchPinbarRequest {
+  repeated PinbarRequest requests = 1;
+}
+
 // 流式请求
 message StreamRequest {
   string symbol = 1;
@@ -348,6 +181,7 @@ enum IndicatorType {
   RSI = 0;
   BOLL = 1;
   MACD = 2;
+  PINBAR = 3;
 }
 
 // 指标响应
@@ -373,98 +207,72 @@ message IndicatorResponse {
   optional double macd_line = 14;
   optional double macd_signal = 15;
   optional double macd_histogram = 16;
+  
+  // 十字针(Pinbar)结果
+  optional bool is_pinbar = 17;
+  optional bool is_bullish = 18;
+  optional double body_ratio = 19;
+  optional double upper_wick_ratio = 20;
+  optional double lower_wick_ratio = 21;
 }
 ```
 
 #### 2.2.3 数据模型
+
 ```java
 // 文件路径: okex-common/src/main/java/com/okex/common/model/Candle.java
-package com.okex.common.model;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import java.time.Instant;
 
 public class Candle {
-    @JsonProperty("symbol")
     private String symbol;
-    
-    @JsonProperty("timestamp")
     private Instant timestamp;
-    
-    @JsonProperty("interval")
     private String interval;
-    
-    @JsonProperty("open")
     private double open;
-    
-    @JsonProperty("high")
     private double high;
-    
-    @JsonProperty("low")
     private double low;
-    
-    @JsonProperty("close")
     private double close;
-    
-    @JsonProperty("volume")
     private double volume;
-    
-    @JsonProperty("created_at")
+    private String confirm;
     private Instant createdAt;
-    
+  
     // 构造函数、getter、setter
 }
 
 // 文件路径: okex-common/src/main/java/com/okex/common/model/IndicatorResult.java
-package com.okex.common.model;
-
-import java.util.Map;
-
 public class IndicatorResult {
     private Double value;
     private Map<String, Double> values;
     private String timestamp;
     private Integer dataPoints;
-    
+  
     // 构造函数、getter、setter
 }
 
 // 文件路径: okex-common/src/main/java/com/okex/common/model/IndicatorParams.java
-package com.okex.common.model;
-
-import java.util.HashMap;
-import java.util.Map;
-
 public class IndicatorParams {
     private Map<String, Object> parameters = new HashMap<>();
-    
+  
     public void addParameter(String key, Object value) {
         parameters.put(key, value);
     }
-    
+  
     public Object getParameter(String key) {
         return parameters.get(key);
     }
-    
+  
     // getter、setter
 }
 ```
 
 #### 2.2.4 技术指标接口
+
 ```java
 // 文件路径: okex-common/src/main/java/com/okex/common/indicator/TechnicalIndicator.java
-package com.okex.common.indicator;
-
-import com.okex.common.model.Candle;
-import com.okex.common.model.IndicatorParams;
-import com.okex.common.model.IndicatorResult;
-
 public interface TechnicalIndicator {
     /**
      * 计算技术指标
      */
     IndicatorResult calculate(java.util.List<Candle> candles, IndicatorParams params);
-    
+  
     /**
      * 获取指标名称
      */
@@ -474,90 +282,22 @@ public interface TechnicalIndicator {
 
 ### 2.3 服务端模块 (okex-server)
 
-#### 2.3.1 POM配置
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+#### 2.3.1 Maven配置
+okex-server模块是项目的核心服务模块，负责WebSocket连接管理、数据处理和gRPC服务提供。
 
-    <parent>
-        <groupId>com.okex</groupId>
-        <artifactId>okex-trans-5</artifactId>
-        <version>1.0.0</version>
-    </parent>
+主要依赖：
+- okex-common（公共模块）
+- Spring Boot（应用框架）
+- MongoDB（数据存储）
+- Redis（缓存）
+- gRPC（远程服务调用）
 
-    <artifactId>okex-server</artifactId>
-    <packaging>jar</packaging>
-
-    <dependencies>
-        <!-- 公共模块 -->
-        <dependency>
-            <groupId>com.okex</groupId>
-            <artifactId>okex-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        
-        <!-- Spring Boot -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        
-        <!-- MongoDB -->
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>mongodb-driver-sync</artifactId>
-        </dependency>
-        
-        <!-- Redis -->
-        <dependency>
-            <groupId>redis.clients</groupId>
-            <artifactId>jedis</artifactId>
-        </dependency>
-        
-        <!-- WebSocket客户端 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-websocket</artifactId>
-        </dependency>
-        
-        <!-- 配置处理器 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
-        </dependency>
-        
-        <!-- 测试 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-```
+该模块包含WebSocket客户端、数据存储层、技术指标计算服务和gRPC服务实现。
 
 #### 2.3.2 服务端启动类
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/OkexServerApplication.java
-package com.okex.server;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 @SpringBootApplication(scanBasePackages = {"com.okex.server", "com.okex.common"})
 public class OkexServerApplication {
     public static void main(String[] args) {
@@ -566,200 +306,164 @@ public class OkexServerApplication {
 }
 ```
 
-#### 2.3.3 gRPC服务实现
+#### 2.3.3 系统配置
+
+**配置说明**：
+服务端模块使用Spring Boot的配置管理机制，支持通过application.properties或application.yml文件进行配置。主要配置项包括：
+
+**技术指标默认配置**：
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `indicator.rsi.default-period` | RSI指标默认周期 | 14 |
+| `indicator.boll.default-period` | BOLL指标默认周期 | 20 |
+| `indicator.boll.default-std-dev` | BOLL指标默认标准差 | 2.0 |
+| `indicator.macd.default-fast-period` | MACD指标默认快线周期 | 12 |
+| `indicator.macd.default-slow-period` | MACD指标默认慢线周期 | 26 |
+| `indicator.macd.default-signal-period` | MACD指标默认信号线周期 | 9 |
+| `indicator.pinbar.default-body-ratio` | Pinbar指标默认实体比例阈值 | 0.2 |
+| `indicator.pinbar.default-wick-ratio` | Pinbar指标默认影线比例阈值 | 0.6 |
+
+**缓存配置**：
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `cache.ttl.rsi` | RSI指标结果缓存过期时间（秒） | 300 |
+| `cache.ttl.boll` | BOLL指标结果缓存过期时间（秒） | 300 |
+| `cache.ttl.macd` | MACD指标结果缓存过期时间（秒） | 300 |
+| `cache.ttl.pinbar` | Pinbar指标结果缓存过期时间（秒） | 300 |
+
+#### 2.3.4 gRPC服务实现
+
+**功能说明**：
+gRPC服务实现负责处理客户端的指标计算请求，从MongoDB获取历史蜡烛数据，调用指标计算引擎计算结果，然后返回给客户端。
+
+**类结构**：
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/grpc/IndicatorServiceImpl.java
-package com.okex.server.grpc;
-
-import com.okex.common.proto.*;
-import com.okex.server.service.CalculationEngine;
-import com.okex.server.storage.CacheService;
-import com.okex.server.storage.MongoRepository;
-import com.okex.common.model.Candle;
-import com.okex.common.model.IndicatorParams;
-import com.okex.common.model.IndicatorResult;
-import io.grpc.stub.StreamObserver;
-import net.devh.boot.grpc.server.service.GrpcService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 @GrpcService
+@RequiredArgsConstructor
 public class IndicatorServiceImpl extends IndicatorServiceGrpc.IndicatorServiceImplBase {
-    
-    private static final Logger logger = LoggerFactory.getLogger(IndicatorServiceImpl.class);
-    
-    @Autowired
-    private CalculationEngine calculationEngine;
-    
-    @Autowired
-    private CacheService cacheService;
-    
-    @Autowired
-    private MongoRepository mongoRepository;
-    
+  
+    // 依赖注入
+    private final CalculationEngine calculationEngine;
+    private final CacheService cacheService;
+    private final MongoRepository mongoRepository;
+  
     @Override
     public void calculateRSI(RSIRequest request, StreamObserver<IndicatorResponse> responseObserver) {
-        try {
-            // 检查缓存
-            String cacheKey = String.format("rsi:%s:%d", request.getBase().getSymbol(), request.getPeriod());
-            IndicatorResponse cachedResult = cacheService.get(cacheKey, IndicatorResponse.class);
-            
-            if (cachedResult != null) {
-                IndicatorResponse.Builder builder = cachedResult.toBuilder()
-                    .setFromCache(true);
-                responseObserver.onNext(builder.build());
-                responseObserver.onCompleted();
-                return;
-            }
-            
-            // 从MongoDB获取数据
-            java.util.List<Candle> candles = mongoRepository.findCandles(
-                request.getBase().getSymbol(),
-                request.getBase().getInterval(),
-                request.getBase().getLimit()
-            );
-            
-            // 计算RSI
-            IndicatorParams params = new IndicatorParams();
-            params.addParameter("period", request.getPeriod());
-            IndicatorResult result = calculationEngine.calculateRSI(candles, params);
-            
-            // 构建响应
-            IndicatorResponse response = IndicatorResponse.newBuilder()
-                .setSuccess(true)
-                .setSymbol(request.getBase().getSymbol())
-                .setIndicatorType(IndicatorType.RSI)
-                .setInterval(request.getBase().getInterval())
-                .setTimestamp(System.currentTimeMillis())
-                .setDataPoints(candles.size())
-                .setRsiValue(result.getValue())
-                .setFromCache(false)
-                .build();
-            
-            // 缓存结果
-            cacheService.set(cacheKey, response, 300); // 5分钟TTL
-            
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            
-        } catch (Exception e) {
-            logger.error("RSI计算失败", e);
-            IndicatorResponse errorResponse = IndicatorResponse.newBuilder()
-                .setSuccess(false)
-                .setErrorMessage(e.getMessage())
-                .build();
-            responseObserver.onNext(errorResponse);
-            responseObserver.onCompleted();
-        }
+        /* 实现RSI计算服务 */
     }
     
     @Override
     public void calculateRSIBatch(BatchRSIRequest request, StreamObserver<IndicatorResponse> responseObserver) {
-        for (RSIRequest rsiRequest : request.getRequestsList()) {
-            calculateRSI(rsiRequest, responseObserver);
-        }
-        responseObserver.onCompleted();
+        /* 实现批量RSI计算服务 */
     }
     
-    // 类似实现其他方法...
+    @Override
+    public void calculateBOLL(BOLLRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现布林带计算服务 */
+    }
+    
+    @Override
+    public void calculateBOLLBatch(BatchBOLLRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现批量布林带计算服务 */
+    }
+    
+    @Override
+    public void calculateMACD(MACDRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现MACD计算服务 */
+    }
+    
+    @Override
+    public void calculateMACDBatch(BatchMACDRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现批量MACD计算服务 */
+    }
+    
+    @Override
+    public void calculatePinbar(PinbarRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现十字针(Pinbar)计算服务 */
+    }
+    
+    @Override
+    public void calculatePinbarBatch(BatchPinbarRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现批量十字针(Pinbar)计算服务 */
+    }
+    
+    @Override
+    public void streamIndicators(StreamRequest request, StreamObserver<IndicatorResponse> responseObserver) {
+        /* 实现实时指标流服务 */
+    }
 }
 ```
 
 #### 2.3.4 技术指标计算引擎
+
+**功能说明**：
+技术指标计算引擎是系统的核心计算组件，负责协调各个技术指标计算器，为上层提供统一的指标计算接口。采用策略模式，根据不同的指标类型调用对应的计算器实现。
+
+**架构流程**：
+```mermaid
+flowchart TD
+    A[接收指标计算请求] --> B[解析请求参数]
+    B --> C{检查缓存}
+    C -->|命中| D[返回缓存结果]
+    C -->|未命中| E[从MongoDB获取蜡烛数据]
+    E --> F{判断指标类型}
+    F -->|RSI| G[调用RSI计算器]
+    F -->|BOLL| H[调用BOLL计算器]
+    F -->|MACD| I[调用MACD计算器]
+    F -->|PINBAR| J[调用Pinbar计算器]
+    G --> K[计算结果]
+    H --> K
+    I --> K
+    J --> K
+    K --> L[更新缓存]
+    L --> M[返回计算结果]
+```
+
+**类结构**：
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/service/CalculationEngine.java
-package com.okex.server.service;
-
-import com.okex.common.model.Candle;
-import com.okex.common.model.IndicatorParams;
-import com.okex.common.model.IndicatorResult;
-import com.okex.server.processor.RSICalculator;
-import com.okex.server.processor.BOLLCalculator;
-import com.okex.server.processor.MACDCalculator;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 @Service
+@RequiredArgsConstructor
 public class CalculationEngine {
-    
-    @Autowired
-    private RSICalculator rsiCalculator;
-    
-    @Autowired
-    private BOLLCalculator bollCalculator;
-    
-    @Autowired
-    private MACDCalculator macdCalculator;
-    
+    // 依赖注入各种指标计算器
+    private final RSICalculator rsiCalculator;
+    private final BOLLCalculator bollCalculator;
+    private final MACDCalculator macdCalculator;
+    private final PinbarCalculator pinbarCalculator;
+  
+    // 核心计算方法
     public IndicatorResult calculateRSI(java.util.List<Candle> candles, IndicatorParams params) {
-        return rsiCalculator.calculate(candles, params);
+        /* 调用RSI计算器进行计算 */
     }
-    
+  
     public IndicatorResult calculateBOLL(java.util.List<Candle> candles, IndicatorParams params) {
-        return bollCalculator.calculate(candles, params);
+        /* 调用BOLL计算器进行计算 */
+    }
+  
+    public IndicatorResult calculateMACD(java.util.List<Candle> candles, IndicatorParams params) {
+        /* 调用MACD计算器进行计算 */
     }
     
-    public IndicatorResult calculateMACD(java.util.List<Candle> candles, IndicatorParams params) {
-        return macdCalculator.calculate(candles, params);
+    public IndicatorResult calculatePinbar(java.util.List<Candle> candles, IndicatorParams params) {
+        /* 调用Pinbar计算器进行计算 */
     }
 }
 ```
 
 #### 2.3.5 技术指标计算器
+
+**功能说明**：
+技术指标计算器负责实现各种技术指标的具体计算逻辑。系统采用策略模式，通过实现TechnicalIndicator接口的不同计算器类来支持多种技术指标。
+
+**类结构**：
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/processor/RSICalculator.java
-package com.okex.server.processor;
-
-import com.okex.common.indicator.TechnicalIndicator;
-import com.okex.common.model.Candle;
-import com.okex.common.model.IndicatorParams;
-import com.okex.common.model.IndicatorResult;
-import org.springframework.stereotype.Component;
-
 @Component
 public class RSICalculator implements TechnicalIndicator {
-    
     @Override
-    public IndicatorResult calculate(java.util.List<Candle> candles, IndicatorParams params) {
-        int period = (Integer) params.getParameter("period");
-        
-        if (candles.size() < period + 1) {
-            throw new IllegalArgumentException("数据点数量不足");
-        }
-        
-        // RSI计算逻辑
-        java.util.List<Double> gains = new java.util.ArrayList<>();
-        java.util.List<Double> losses = new java.util.ArrayList<>();
-        
-        for (int i = 1; i < candles.size(); i++) {
-            double change = candles.get(i).getClose() - candles.get(i - 1).getClose();
-            if (change > 0) {
-                gains.add(change);
-                losses.add(0.0);
-            } else {
-                gains.add(0.0);
-                losses.add(Math.abs(change));
-            }
-        }
-        
-        double avgGain = gains.subList(0, period).stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        double avgLoss = losses.subList(0, period).stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        
-        for (int i = period; i < gains.size(); i++) {
-            avgGain = (avgGain * (period - 1) + gains.get(i)) / period;
-            avgLoss = (avgLoss * (period - 1) + losses.get(i)) / period;
-        }
-        
-        double rs = avgLoss == 0 ? 100 : avgGain / avgLoss;
-        double rsi = 100 - (100 / (1 + rs));
-        
-        IndicatorResult result = new IndicatorResult();
-        result.setValue(rsi);
-        result.setDataPoints(candles.size());
-        result.setTimestamp(String.valueOf(System.currentTimeMillis()));
-        
-        return result;
+    public IndicatorResult calculate(List<Candle> candles, IndicatorParams params) {
+        /* 实现RSI（相对强弱指标）计算逻辑 */
     }
     
     @Override
@@ -768,103 +472,286 @@ public class RSICalculator implements TechnicalIndicator {
     }
 }
 
-// 类似实现BOLLCalculator和MACDCalculator...
+// 文件路径: okex-server/src/main/java/com/okex/server/processor/BOLLCalculator.java
+@Component
+public class BOLLCalculator implements TechnicalIndicator {
+    @Override
+    public IndicatorResult calculate(List<Candle> candles, IndicatorParams params) {
+        /* 实现BOLL（布林带）计算逻辑 */
+    }
+    
+    @Override
+    public String getName() {
+        return "BOLL";
+    }
+}
+
+// 文件路径: okex-server/src/main/java/com/okex/server/processor/MACDCalculator.java
+@Component
+public class MACDCalculator implements TechnicalIndicator {
+    @Override
+    public IndicatorResult calculate(List<Candle> candles, IndicatorParams params) {
+        /* 实现MACD（指数平滑异同移动平均线）计算逻辑 */
+    }
+    
+    @Override
+    public String getName() {
+        return "MACD";
+    }
+}
+
+// 文件路径: okex-server/src/main/java/com/okex/server/processor/PinbarCalculator.java
+@Component
+public class PinbarCalculator implements TechnicalIndicator {
+    @Override
+    public IndicatorResult calculate(List<Candle> candles, IndicatorParams params) {
+        /* 实现Pinbar（十字针）识别逻辑 */
+    }
+    
+    @Override
+    public String getName() {
+        return "PINBAR";
+    }
+}
+
+// 文件路径: okex-server/src/main/java/com/okex/server/processor/MACDCalculator.java
+@Component
+public class MACDCalculator implements TechnicalIndicator {
+    @Override
+    public IndicatorResult calculate(List<Candle> candles, IndicatorParams params) {
+        /* 实现MACD（指数平滑异同移动平均线）计算逻辑 */
+    }
+    
+    @Override
+    public String getName() {
+        return "MACD";
+    }
+}
 ```
 
 #### 2.3.6 数据存储层
+
+**功能说明**：
+数据存储层负责将蜡烛数据持久化到MongoDB数据库，并提供查询接口。采用Repository模式，通过MongoRepository实现CandleRepository接口，封装数据库操作细节。
+
+**数据结构设计**：
+
+```json
+{
+  "symbol": "BTC-USDT-SWAP",
+  "timestamp": "2023-12-25T10:00:00Z",
+  "interval": "1m",
+  "open": 42000.0,
+  "high": 42100.0,
+  "low": 41950.0,
+  "close": 42050.0,
+  "volume": 1250.8,
+  "confirm": "1",
+  "created_at": "2023-12-25T10:00:01Z"
+}
+```
+
+**confirm字段说明**:
+- "0": 蜡烛图未确认(仍在形成中)
+- "1": 蜡烛图已确认(时间周期已完成)
+- 对于数据校验和历史分析非常重要,只有confirm="1"的数据才应该用于最终计算
+
+**类结构**：
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/storage/MongoRepository.java
 package com.okex.server.storage;
 
-import com.okex.common.model.Candle;
-import com.mongodb.client.*;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import org.bson.Document;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Repository;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-
 @Repository
-public class MongoRepository {
+@RequiredArgsConstructor
+public class MongoRepository implements CandleRepository {
+    // 核心依赖
+    private final MongoClient mongoClient;
+    private final MongoDatabase database;
+    private final MongoCollection<Document> collection;
     
-    @Autowired
-    private MongoClient mongoClient;
-    
-    private static final String DATABASE = "okex_data";
-    private static final String COLLECTION = "candles";
-    
-    public List<Candle> findCandles(String symbol, String interval, int limit) {
-        MongoDatabase database = mongoClient.getDatabase(DATABASE);
-        MongoCollection<Document> collection = database.getCollection(COLLECTION);
-        
-        List<Candle> candles = new ArrayList<>();
-        
-        collection.find(Filters.and(
-                Filters.eq("symbol", symbol),
-                Filters.eq("interval", interval)
-            ))
-            .sort(Sorts.descending("timestamp"))
-            .limit(limit)
-            .forEach(doc -> {
-                Candle candle = new Candle();
-                candle.setSymbol(doc.getString("symbol"));
-                candle.setTimestamp(Instant.parse(doc.getString("timestamp")));
-                candle.setInterval(doc.getString("interval"));
-                candle.setOpen(doc.getDouble("open"));
-                candle.setHigh(doc.getDouble("high"));
-                candle.setLow(doc.getDouble("low"));
-                candle.setClose(doc.getDouble("close"));
-                candle.setVolume(doc.getDouble("volume"));
-                candles.add(candle);
-            });
-        
-        // 反转列表，使时间戳升序
-        java.util.Collections.reverse(candles);
-        
-        return candles;
+    // 构造函数 - 依赖注入MongoDB配置
+    public MongoRepository(@Value("${mongodb.uri}") String mongoUri,
+                          @Value("${mongodb.database}") String databaseName,
+                          @Value("${mongodb.collection}") String collectionName) {
+        /* 初始化MongoDB连接 */
     }
     
+    // 核心方法
+    @Override
+    public List<Candle> findCandles(String symbol, String interval, int limit) {
+        /* 按symbol和interval查询蜡烛数据，支持分页 */
+    }
+    
+    @Override
     public void saveCandle(Candle candle) {
-        MongoDatabase database = mongoClient.getDatabase(DATABASE);
-        MongoCollection<Document> collection = database.getCollection(COLLECTION);
-        
-        Document doc = new Document()
-            .append("symbol", candle.getSymbol())
-            .append("timestamp", candle.getTimestamp().toString())
-            .append("interval", candle.getInterval())
-            .append("open", candle.getOpen())
-            .append("high", candle.getHigh())
-            .append("low", candle.getLow())
-            .append("close", candle.getClose())
-            .append("volume", candle.getVolume())
-            .append("created_at", Instant.now().toString());
-        
-        collection.insertOne(doc);
+        /* 保存单条蜡烛数据到MongoDB */
+    }
+    
+    @Override
+    public void saveCandlesBatch(List<Candle> candles) {
+        /* 批量保存蜡烛数据到MongoDB */
+    }
+}
+
+#### 2.3.7 Redis缓存层
+
+**功能说明**：
+Redis缓存层用于缓存技术指标计算结果，避免重复计算，提高系统响应速度。采用键值对存储方式，支持TTL过期机制。
+
+**缓存结构设计**：
+
+```
+Key: RSI:BTC-USDT-SWAP:1m:14
+Value: {"timestamp": "2023-12-25T10:00:00Z", "value": 65.4, "data_points": 100}
+TTL: 30秒
+
+Key: BOLL:BTC-USDT-SWAP:1m:15
+Value: {"timestamp": "2023-12-25T10:00:00Z", "upper": 42200.0, "middle": 42000.0, "lower": 41800.0, "data_points": 100}
+TTL: 30秒
+```
+
+**类结构**：
+```java
+// 文件路径: okex-server/src/main/java/com/okex/server/cache/RedisCache.java
+@Component
+@RequiredArgsConstructor
+public class RedisCache {
+    // 核心依赖
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ValueOperations<String, Object> valueOps;
+    
+    // 核心方法
+    public void set(String key, Object value, long ttl) {
+        /* 设置缓存 */
+    }
+    
+    public <T> T get(String key, Class<T> clazz) {
+        /* 获取缓存 */
+    }
+    
+    public void delete(String key) {
+        /* 删除缓存 */
+    }
+}
+
+#### 2.3.8 批量写入机制
+
+**功能说明**：
+为了提高数据写入性能，系统实现了基于时间窗口的批量写入MongoDB机制。该机制将WebSocket接收的蜡烛数据暂存，然后在固定时间窗口（默认20秒，可配置）内批量写入MongoDB，减少数据库连接开销。
+
+**类结构**：
+```java
+// 文件路径: okex-server/src/main/java/com/okex/server/websocket/CandleBatchWriter.java
+package com.okex.server.websocket;
+
+import com.okex.common.model.Candle;
+import com.okex.server.storage.CandleRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+@Component
+public class CandleBatchWriter {
+    private static final Logger log = LoggerFactory.getLogger(CandleBatchWriter.class);
+    
+    // 依赖注入
+    private final CandleRepository candleRepository;
+    
+    // 内部数据结构
+    private final Map<String, List<Candle>> candleBuffer; // 使用ConcurrentHashMap保证线程安全
+    private final ScheduledExecutorService scheduler;
+    
+    // 配置参数
+    @Value("${mongodb.batch.window_seconds:20}")
+    private int windowSeconds;
+    
+    // 构造函数
+    public CandleBatchWriter(CandleRepository candleRepository) {
+        this.candleRepository = candleRepository;
+        this.candleBuffer = new ConcurrentHashMap<>();
+        this.scheduler = Executors.newSingleThreadScheduledExecutor();
+    }
+    
+    // 生命周期方法
+    @PostConstruct
+    public void init() {
+        // 启动定时写入任务
+        scheduler.scheduleAtFixedRate(this::writeBatch, windowSeconds, windowSeconds, TimeUnit.SECONDS);
+        log.info("Candle batch writer initialized with window seconds: {}", windowSeconds);
+    }
+    
+    @PreDestroy
+    public void destroy() {
+        // 写入剩余数据并关闭资源
+        writeBatch();
+        scheduler.shutdown();
+        log.info("Candle batch writer destroyed");
+    }
+    
+    // 核心方法
+    public void addCandle(Candle candle) {
+        // 构造唯一键：symbol-interval
+        String key = String.format("%s-%s", candle.getSymbol(), candle.getInterval());
+        candleBuffer.computeIfAbsent(key, k -> new ArrayList<>()).add(candle);
+        log.debug("Added candle to buffer: {}", key);
+    }
+    
+    /**
+     * 批量写入缓冲区中的所有数据到MongoDB
+     */
+    private void writeBatch() {
+        if (candleBuffer.isEmpty()) {
+            log.debug("Candle buffer is empty, skip writing");
+            return;
+        }
+      
+        int totalWritten = 0;
+        long startTime = System.currentTimeMillis();
+      
+        try {
+            // 遍历所有缓冲区并写入数据
+            for (Map.Entry<String, List<Candle>> entry : candleBuffer.entrySet()) {
+                String key = entry.getKey();
+                List<Candle> candles = entry.getValue();
+              
+                if (!candles.isEmpty()) {
+                    candleRepository.saveAll(candles);
+                    totalWritten += candles.size();
+                    log.info("Wrote {} candles for {} to MongoDB", candles.size(), key);
+                    // 清空已写入的缓冲区
+                    candles.clear();
+                }
+            }
+          
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Batch write completed: {} candles in {} ms", totalWritten, duration);
+          
+        } catch (Exception e) {
+            log.error("Failed to write batch candles to MongoDB", e);
+        }
     }
 }
 
 // 文件路径: okex-server/src/main/java/com/okex/server/storage/CacheService.java
-package com.okex.server.storage;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import java.util.concurrent.TimeUnit;
-
 @Service
+@RequiredArgsConstructor
 public class CacheService {
-    
-    @Autowired
-    private JedisPool jedisPool;
-    
-    @Autowired
-    private ObjectMapper objectMapper;
-    
+  
+    private final JedisPool jedisPool;
+  
+    private final ObjectMapper objectMapper;
+  
     public <T> T get(String key, Class<T> clazz) {
         try (Jedis jedis = jedisPool.getResource()) {
             String value = jedis.get(key);
@@ -876,7 +763,7 @@ public class CacheService {
         }
         return null;
     }
-    
+  
     public void set(String key, Object value, int ttlSeconds) {
         try (Jedis jedis = jedisPool.getResource()) {
             String json = objectMapper.writeValueAsString(value);
@@ -885,7 +772,7 @@ public class CacheService {
             // 日志记录
         }
     }
-    
+  
     public void delete(String key) {
         try (Jedis jedis = jedisPool.getResource()) {
             jedis.del(key);
@@ -894,168 +781,79 @@ public class CacheService {
 }
 ```
 
-#### 2.3.7 WebSocket客户端
+#### 2.3.8 WebSocket客户端
+
+**类结构**：
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/websocket/OKExWebSocketClient.java
-package com.okex.server.websocket;
-
-import com.okex.common.model.Candle;
-import com.okex.server.storage.MongoRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import org.springframework.web.socket.*;
-import java.net.URI;
-import java.time.Instant;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-
 @Component
+@RequiredArgsConstructor
 public class OKExWebSocketClient {
+    // 依赖注入
+    private final MongoRepository mongoRepository;
     
-    @Autowired
-    private MongoRepository mongoRepository;
-    
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    // 核心组件
+    private final ObjectMapper objectMapper;
+    private final ScheduledExecutorService scheduler;
     private WebSocketSession session;
     
-    public void connect() {
-        try {
-            WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-            session = container.connectToServer(this, URI.create("wss://ws.okx.com:8443/ws/v5/public"));
-            
-            // 发送订阅消息
-            subscribe();
-            
-        } catch (Exception e) {
-            // 日志记录
-        }
-    }
+    // 核心方法
+    public void connect() { /* 建立WebSocket连接 */ }
     
-    private void subscribe() {
-        try {
-            String subscribeMsg = "{\"op\":\"subscribe\",\"args\":[{\"channel\":\"candle1m\",\"instId\":\"BTC-USDT-SWAP\"},{\"channel\":\"candle1m\",\"instId\":\"ETH-USDT-SWAP\"},{\"channel\":\"candle1H\",\"instId\":\"BTC-USDT-SWAP\"},{\"channel\":\"candle1H\",\"instId\":\"ETH-USDT-SWAP\"}]}";
-            session.sendMessage(new TextMessage(subscribeMsg));
-        } catch (Exception e) {
-            // 日志记录
-        }
-    }
+    private void subscribe() { /* 发送订阅消息 */ }
     
     @OnMessage
-    public void onMessage(String message) {
-        try {
-            JsonNode root = objectMapper.readTree(message);
-            
-            if (root.has("data")) {
-                JsonNode data = root.get("data").get(0);
-                JsonNode arg = root.get("arg");
-                
-                Candle candle = new Candle();
-                candle.setSymbol(arg.get("instId").asText());
-                candle.setTimestamp(Instant.ofEpochMilli(data.get("ts").asLong()));
-                candle.setInterval(extractInterval(arg.get("channel").asText()));
-                candle.setOpen(data.get("o").asDouble());
-                candle.setHigh(data.get("h").asDouble());
-                candle.setLow(data.get("l").asDouble());
-                candle.setClose(data.get("c").asDouble());
-                candle.setVolume(data.get("vol").asDouble());
-                
-                mongoRepository.saveCandle(candle);
-            }
-        } catch (Exception e) {
-            // 日志记录
-        }
-    }
+    public void onMessage(String message) { /* 处理接收到的WebSocket消息 */ }
     
-    private String extractInterval(String channel) {
-        if (channel.equals("candle1m")) return "1m";
-        if (channel.equals("candle1H")) return "1H";
-        return channel;
-    }
-    
-    // 其他WebSocket事件处理方法...
+    private String extractInterval(String channel) { /* 解析时间间隔 */ }
 }
+
+**功能说明**：
+- 负责与OKEx WebSocket API建立连接并订阅蜡烛数据
+- 解析接收到的WebSocket消息并转换为Candle对象
+- 将处理后的蜡烛数据保存到MongoDB
+- 实现了基本的连接管理和消息处理机制
 ```
 
 ### 2.4 客户端模块 (okex-client)
 
 #### 2.4.1 POM配置
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>com.okex</groupId>
-        <artifactId>okex-trans-5</artifactId>
-        <version>1.0.0</version>
-    </parent>
+**客户端模块POM配置**：
 
-    <artifactId>okex-client</artifactId>
-    <packaging>jar</packaging>
+客户端模块是一个独立的Spring Boot应用，主要依赖：
+- okex-common（公共模块）
+- Spring Boot（应用框架）
+- gRPC客户端依赖
+- 测试依赖
 
-    <dependencies>
-        <!-- 公共模块 -->
-        <dependency>
-            <groupId>com.okex</groupId>
-            <artifactId>okex-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        
-        <!-- gRPC客户端 -->
-        <dependency>
-            <groupId>net.devh</groupId>
-            <artifactId>grpc-client-spring-boot-starter</artifactId>
-            <version>2.15.0.RELEASE</version>
-        </dependency>
-        
-        <!-- Spring Boot -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        
-        <!-- 测试 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-```
+**配置路径**：okex-client/pom.xml
 
 #### 2.4.2 客户端启动类
+
+**客户端启动类**：
+
+客户端启动类是Spring Boot应用的入口点，负责初始化应用上下文并启动服务。
+
+**类结构**：
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/OkexClientApplication.java
 package com.okex.client;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 @SpringBootApplication(scanBasePackages = {"com.okex.client", "com.okex.common"})
 public class OkexClientApplication {
     public static void main(String[] args) {
-        SpringApplication.run(OkexClientApplication.class, args);
+        /* 启动Spring Boot应用 */
     }
 }
 ```
 
-#### 2.4.3 gRPC客户端服务
+#### 2.4.3 gRPC客户端服务实现
+
+**功能说明**：
+客户端服务实现负责与服务端建立gRPC连接，并提供便捷的方法调用服务端的技术指标计算接口。
+
+**类结构**：
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/service/IndicatorClientService.java
 package com.okex.client.service;
@@ -1063,84 +861,44 @@ package com.okex.client.service;
 import com.okex.common.proto.*;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.springframework.stereotype.Service;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class IndicatorClientService {
-    
+  
     @GrpcClient("okex-server")
     private IndicatorServiceGrpc.IndicatorServiceBlockingStub blockingStub;
-    
+  
     @GrpcClient("okex-server")
     private IndicatorServiceGrpc.IndicatorServiceStub asyncStub;
-    
+  
+    // 核心方法
     public IndicatorResponse calculateRSI(String symbol, String interval, int period, int limit) {
-        BaseRequest baseRequest = BaseRequest.newBuilder()
-            .setSymbol(symbol)
-            .setInterval(interval)
-            .setLimit(limit)
-            .build();
-            
-        RSIRequest request = RSIRequest.newBuilder()
-            .setBase(baseRequest)
-            .setPeriod(period)
-            .build();
-            
-        return blockingStub.calculateRSI(request);
+        /* 调用服务端RSI计算接口 */
     }
-    
+  
     public IndicatorResponse calculateBOLL(String symbol, String interval, int period, double stdDev, int limit) {
-        BaseRequest baseRequest = BaseRequest.newBuilder()
-            .setSymbol(symbol)
-            .setInterval(interval)
-            .setLimit(limit)
-            .build();
-            
-        BOLLRequest request = BOLLRequest.newBuilder()
-            .setBase(baseRequest)
-            .setPeriod(period)
-            .setStdDev(stdDev)
-            .build();
-            
-        return blockingStub.calculateBOLL(request);
+        /* 调用服务端BOLL计算接口 */
     }
-    
+  
     public IndicatorResponse calculateMACD(String symbol, String interval, 
                                           int fastPeriod, int slowPeriod, int signalPeriod, int limit) {
-        BaseRequest baseRequest = BaseRequest.newBuilder()
-            .setSymbol(symbol)
-            .setInterval(interval)
-            .setLimit(limit)
-            .build();
-            
-        MACDRequest request = MACDRequest.newBuilder()
-            .setBase(baseRequest)
-            .setFastPeriod(fastPeriod)
-            .setSlowPeriod(slowPeriod)
-            .setSignalPeriod(signalPeriod)
-            .build();
-            
-        return blockingStub.calculateMACD(request);
+        /* 调用服务端MACD计算接口 */
     }
 }
 ```
 
 #### 2.4.4 使用示例
+
+**功能说明**：
+提供客户端服务的使用示例，展示如何调用不同技术指标的计算接口。
+
+**示例结构**：
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/example/ClientExample.java
-package com.okex.client.example;
-
-import com.okex.client.service.IndicatorClientService;
-import com.okex.common.proto.IndicatorResponse;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.stereotype.Component;
-
 @Component
+@RequiredArgsConstructor
 public class ClientExample implements CommandLineRunner {
-    
-    @Autowired
-    private IndicatorClientService indicatorClientService;
+    private final IndicatorClientService indicatorClientService;
     
     @Override
     public void run(String... args) throws Exception {
@@ -1154,17 +912,13 @@ public class ClientExample implements CommandLineRunner {
         IndicatorResponse bollResponse = indicatorClientService.calculateBOLL(
             "BTC-USDT-SWAP", "1m", 15, 2.0, 100
         );
-        System.out.println("布林带上轨: " + bollResponse.getBollUpper());
-        System.out.println("布林带中轨: " + bollResponse.getBollMiddle());
-        System.out.println("布林带下轨: " + bollResponse.getBollLower());
+        // 输出布林带结果
         
         // MACD计算示例
         IndicatorResponse macdResponse = indicatorClientService.calculateMACD(
             "BTC-USDT-SWAP", "1m", 12, 26, 9, 100
         );
-        System.out.println("MACD线: " + macdResponse.getMacdLine());
-        System.out.println("信号线: " + macdResponse.getMacdSignal());
-        System.out.println("柱状图: " + macdResponse.getMacdHistogram());
+        // 输出MACD结果
     }
 }
 ```
@@ -1172,14 +926,17 @@ public class ClientExample implements CommandLineRunner {
 ## 3. 部署和配置
 
 ### 3.1 服务端配置文件
-```yaml
-# 文件路径: okex-server/src/main/resources/application.yml
-server:
-  port: 8080
 
-grpc:
-  server:
-    port: 50051
+**服务端配置**：
+
+服务端模块通过application.yml配置文件进行配置，主要包括：
+- HTTP服务端口
+- gRPC服务端口
+- MongoDB连接信息
+- WebSocket连接配置
+- 批量写入机制配置
+
+**配置路径**：okex-server/src/main/resources/application.yml
 
 spring:
   application:
@@ -1212,61 +969,43 @@ logging:
 ```
 
 ### 3.2 客户端配置文件
-```yaml
-# 文件路径: okex-client/src/main/resources/application.yml
-spring:
-  application:
-    name: okex-client
 
-grpc:
-  client:
-    okex-server:
-      address: 'static://127.0.0.1:50051'
-      negotiation-type: plaintext
+**客户端配置**：
 
-# 日志配置
-logging:
-  level:
-    com.okex: DEBUG
-    root: INFO
-```
+客户端模块通过application.yml配置文件进行配置，主要包括：
+- Spring应用名称
+- gRPC服务端连接信息（地址、端口、协商类型）
+- 日志级别配置
+
+**配置路径**：okex-client/src/main/resources/application.yml
 
 ## 4. 构建和运行
 
-### 4.1 构建命令
-```bash
-# 构建整个项目
-mvn clean install
+### 4.1 构建方式
 
-# 单独构建各个模块
-mvn clean install -pl okex-common
-mvn clean install -pl okex-server
-mvn clean install -pl okex-client
-```
+项目采用Maven进行构建管理，支持整体构建和模块化构建。
 
-### 4.2 运行服务
-```bash
-# 运行服务端
-java -jar okex-server/target/okex-server-1.0.0.jar
+### 4.2 运行方式
 
-# 运行客户端
-java -jar okex-client/target/okex-client-1.0.0.jar
-```
+服务端和客户端均为独立的Spring Boot应用，可通过jar包方式运行。
 
 ## 5. 监控和运维
 
 ### 5.1 健康检查
+
 - gRPC服务状态监控
 - WebSocket连接状态监控
 - MongoDB连接监控
 - Redis连接监控
 
 ### 5.2 日志管理
+
 - 结构化日志输出
 - 性能指标记录
 - 错误日志追踪
 
 ### 5.3 性能优化
+
 - 连接池配置
 - 缓存策略优化
 - 批量操作优化
