@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.supermancell.common.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,8 @@ public class OkexWebSocketClient {
     private final WebSocketClient webSocketClient = new StandardWebSocketClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final SubscriptionConfigLoader subscriptionConfigLoader;
+    private final OkexMessageParser messageParser;
+    private final CandleBatchWriter candleBatchWriter;
 
     @Value("${websocket.okex.url}")
     private String okexWebSocketUrl;
@@ -49,8 +52,12 @@ public class OkexWebSocketClient {
     private volatile WebSocketSession session;
     private volatile SubscriptionConfig currentConfig;
 
-    public OkexWebSocketClient(SubscriptionConfigLoader subscriptionConfigLoader) {
+    public OkexWebSocketClient(SubscriptionConfigLoader subscriptionConfigLoader,
+                                 OkexMessageParser messageParser,
+                                 CandleBatchWriter candleBatchWriter) {
         this.subscriptionConfigLoader = subscriptionConfigLoader;
+        this.messageParser = messageParser;
+        this.candleBatchWriter = candleBatchWriter;
     }
 
     @PostConstruct
@@ -221,9 +228,9 @@ public class OkexWebSocketClient {
     }
 
     /**
-     * 简单的 WebSocketHandler，目前仅记录日志，后续可以扩展为解析蜡烛数据并入库。
+     * WebSocketHandler that parses candle messages and saves to MongoDB.
      */
-    private static class OkexWebSocketHandler implements WebSocketHandler {
+    private class OkexWebSocketHandler implements WebSocketHandler {
 
         @Override
         public void afterConnectionEstablished(WebSocketSession session) {
@@ -235,6 +242,16 @@ public class OkexWebSocketClient {
             if (message instanceof TextMessage) {
                 String payload = ((TextMessage) message).getPayload();
                 log.debug("Received message: {}", payload);
+
+                // Parse and buffer candles for batch write
+                try {
+                    Candle candle = messageParser.parseCandle(payload);
+                    if (candle != null) {
+                        candleBatchWriter.addCandle(candle);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to parse candle from message: {}", payload, e);
+                }
             } else {
                 log.debug("Received non-text message: {}", message);
             }

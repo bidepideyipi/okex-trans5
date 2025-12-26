@@ -19,7 +19,9 @@ class OkexWebSocketClientTest {
     @Test
     void shouldSendSubscribeMessageOnInitialConfig() throws Exception {
         SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
-        OkexWebSocketClient client = new OkexWebSocketClient(loader);
+        OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
+        CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
 
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Mockito.when(session.isOpen()).thenReturn(true);
@@ -51,7 +53,9 @@ class OkexWebSocketClientTest {
     @Test
     void shouldSendUnsubscribeAndSubscribeOnConfigChange() throws Exception {
         SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
-        OkexWebSocketClient client = new OkexWebSocketClient(loader);
+        OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
+        CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
 
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Mockito.when(session.isOpen()).thenReturn(true);

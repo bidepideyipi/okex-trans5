@@ -28,6 +28,9 @@ public class Candle {
     @JsonProperty("volume")
     private double volume;
     
+    @JsonProperty("confirm")
+    private String confirm;
+    
     @JsonProperty("created_at")
     private Instant createdAt;
 
@@ -43,6 +46,7 @@ public class Candle {
         this.low = low;
         this.close = close;
         this.volume = volume;
+        this.confirm = "0"; // Default to unconfirmed
         this.createdAt = Instant.now();
     }
 
@@ -111,6 +115,14 @@ public class Candle {
         this.volume = volume;
     }
 
+    public String getConfirm() {
+        return confirm;
+    }
+
+    public void setConfirm(String confirm) {
+        this.confirm = confirm;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -130,6 +142,7 @@ public class Candle {
                 ", low=" + low +
                 ", close=" + close +
                 ", volume=" + volume +
+                ", confirm='" + confirm + '\'' +
                 ", createdAt=" + createdAt +
                 '}';
     }

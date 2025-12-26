@@ -8,10 +8,9 @@ grpc:
 spring:
   application:
     name: okex-server
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+  data:
+    mongodb:
+      uri: mongodb://${mongodb.host:localhost}:${mongodb.port:27017}/${mongodb.database:okex_data}
 
 # MongoDB配置
 mongodb:
@@ -46,6 +45,13 @@ subscription:
     - 1m
     - 1H
   refresh-interval-ms: 60000
+
+# Candle批量写入配置
+candle:
+  batch:
+    flush:
+      interval:
+        seconds: 20  # 每20秒批量写入一次数据库
 
 # 日志配置
 logging:

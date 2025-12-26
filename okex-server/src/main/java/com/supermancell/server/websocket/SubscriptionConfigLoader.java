@@ -81,10 +81,33 @@ public class SubscriptionConfigLoader {
         return list;
     }
 
-    @SuppressWarnings("unchecked")
     private SubscriptionConfig loadFromEnvironment() {
-        List<String> symbols = environment.getProperty("subscription.symbols", List.class);
-        List<String> intervals = environment.getProperty("subscription.intervals", List.class);
+        List<String> symbols = new ArrayList<>();
+        List<String> intervals = new ArrayList<>();
+        
+        // Read symbols from environment
+        int index = 0;
+        while (true) {
+            String symbol = environment.getProperty("subscription.symbols[" + index + "]");
+            if (symbol == null || symbol.trim().isEmpty()) {
+                break;
+            }
+            symbols.add(symbol.trim());
+            index++;
+        }
+        
+        // Read intervals from environment
+        index = 0;
+        while (true) {
+            String interval = environment.getProperty("subscription.intervals[" + index + "]");
+            if (interval == null || interval.trim().isEmpty()) {
+                break;
+            }
+            intervals.add(interval.trim());
+            index++;
+        }
+        
+        log.info("Loaded subscription config from environment: symbols={}, intervals={}", symbols, intervals);
         return new SubscriptionConfig(symbols, intervals);
     }
 }
