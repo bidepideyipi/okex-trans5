@@ -8,6 +8,10 @@ grpc:
 spring:
   application:
     name: okex-server
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
 
 # MongoDB配置
 mongodb:
@@ -24,9 +28,24 @@ redis:
 # WebSocket配置
 websocket:
   okex:
-    url: wss://ws.okx.com:8443/ws/v5/public
+    url: wss://ws.okx.com:8443/ws/v5/business
     reconnect_interval: 5000
     heartbeat_interval: 30000
+    proxy:
+      enabled: true
+      type: socks5
+      host: 127.0.0.1
+      port: 4781
+
+# 订阅配置
+subscription:
+  symbols:
+    - BTC-USDT-SWAP
+    - ETH-USDT-SWAP
+  intervals:
+    - 1m
+    - 1H
+  refresh-interval-ms: 60000
 
 # 日志配置
 logging:
