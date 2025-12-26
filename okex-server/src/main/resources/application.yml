@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+grpc:
+  server:
+    port: 50051
+
+spring:
+  application:
+    name: okex-server
+
+# MongoDB配置
+mongodb:
+  host: localhost
+  port: 27017
+  database: okex_data
+
+# Redis配置
+redis:
+  host: localhost
+  port: 6379
+  database: 0
+
+# WebSocket配置
+websocket:
+  okex:
+    url: wss://ws.okx.com:8443/ws/v5/public
+    reconnect_interval: 5000
+    heartbeat_interval: 30000
+
+# 日志配置
+logging:
+  level:
+    com.okex: DEBUG
+    root: INFO

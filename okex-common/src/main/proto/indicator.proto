@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package com.okex.common.proto;
+
+option java_package = "com.okex.common.proto";
+option java_outer_classname = "IndicatorServiceProto";
+
+service IndicatorService {
+  // RSI计算
+  rpc CalculateRSI(RSIRequest) returns (IndicatorResponse);
+  
+  // 批量RSI计算
+  rpc CalculateRSIBatch(BatchRSIRequest) returns (stream IndicatorResponse);
+  
+  // 布林带计算
+  rpc CalculateBOLL(BOLLRequest) returns (IndicatorResponse);
+  
+  // 批量布林带计算
+  rpc CalculateBOLLBatch(BatchBOLLRequest) returns (stream IndicatorResponse);
+  
+  // MACD计算
+  rpc CalculateMACD(MACDRequest) returns (IndicatorResponse);
+  
+  // 批量MACD计算
+  rpc CalculateMACDBatch(BatchMACDRequest) returns (stream IndicatorResponse);
+  
+  // 实时指标流
+  rpc StreamIndicators(StreamRequest) returns (stream IndicatorResponse);
+}
+
+// 基础请求结构
+message BaseRequest {
+  string symbol = 1;
+  string interval = 2;
+  int32 limit = 3;
+}
+
+// RSI请求
+message RSIRequest {
+  BaseRequest base = 1;
+  int32 period = 2;
+}
+
+// 批量RSI请求
+message BatchRSIRequest {
+  repeated RSIRequest requests = 1;
+}
+
+// 布林带请求
+message BOLLRequest {
+  BaseRequest base = 1;
+  int32 period = 2;
+  double std_dev = 3;
+}
+
+// 批量布林带请求
+message BatchBOLLRequest {
+  repeated BOLLRequest requests = 1;
+}
+
+// MACD请求
+message MACDRequest {
+  BaseRequest base = 1;
+  int32 fast_period = 2;
+  int32 slow_period = 3;
+  int32 signal_period = 4;
+}
+
+// 批量MACD请求
+message BatchMACDRequest {
+  repeated MACDRequest requests = 1;
+}
+
+// 流式请求
+message StreamRequest {
+  string symbol = 1;
+  string interval = 2;
+  repeated IndicatorType indicators = 3;
+}
+
+enum IndicatorType {
+  RSI = 0;
+  BOLL = 1;
+  MACD = 2;
+}
+
+// 指标响应
+message IndicatorResponse {
+  bool success = 1;
+  string error_message = 2;
+  string symbol = 3;
+  IndicatorType indicator_type = 4;
+  string interval = 5;
+  int64 timestamp = 6;
+  int32 data_points = 7;
+  bool from_cache = 8;
+  
+  // RSI结果
+  optional double rsi_value = 10;
+  
+  // 布林带结果
+  optional double boll_upper = 11;
+  optional double boll_middle = 12;
+  optional double boll_lower = 13;
+  
+  // MACD结果
+  optional double macd_line = 14;
+  optional double macd_signal = 15;
+  optional double macd_histogram = 16;
+}

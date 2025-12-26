@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: okex-client
+
+grpc:
+  client:
+    okex-server:
+      address: 'static://127.0.0.1:50051'
+      negotiation-type: plaintext
+
+# 日志配置
+logging:
+  level:
+    com.okex: DEBUG
+    root: INFO

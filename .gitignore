@@ -1,0 +1,112 @@
+# 通用忽略项
+.DS_Store
+*.log
+*.swp
+*.swo
+*~
+.cache/
+.env
+.env.local
+.env.*.local
+
+# Python 项目忽略项
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.tox/
+.eggs/
+*.egg-info/
+build/
+dist/
+dist-eggs/
+*.egg
+*.eggs/*
+.pyre/
+.pytest_cache/
+.mypy_cache/
+
+# Go 项目忽略项
+bin/
+binaries/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+debug/
+release/
+
+# Java 项目忽略项
+target/
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+*.class
+*.log
+logs/
+.gradle/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 构建工具
+*.log
+logs/
+build/
+
+# 测试覆盖率
+.coverage
+.coverage.*
+*.coveragerc
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Redis 测试文件
+*.rdb
+*.aof
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+
+# 文档生成
+_site/
+public/
+docs/_build/
+
+# 其他
+.cache/
+.temp/
+tmp/
