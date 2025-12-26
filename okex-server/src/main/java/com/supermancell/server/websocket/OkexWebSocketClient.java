@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supermancell.common.model.Candle;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,13 +18,13 @@ import org.springframework.web.socket.client.WebSocketClient;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
-import java.net.URI;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class OkexWebSocketClient {
 
     private static final Logger log = LoggerFactory.getLogger(OkexWebSocketClient.class);
@@ -51,14 +52,6 @@ public class OkexWebSocketClient {
 
     private volatile WebSocketSession session;
     private volatile SubscriptionConfig currentConfig;
-
-    public OkexWebSocketClient(SubscriptionConfigLoader subscriptionConfigLoader,
-                                 OkexMessageParser messageParser,
-                                 CandleBatchWriter candleBatchWriter) {
-        this.subscriptionConfigLoader = subscriptionConfigLoader;
-        this.messageParser = messageParser;
-        this.candleBatchWriter = candleBatchWriter;
-    }
 
     @PostConstruct
     public void init() {

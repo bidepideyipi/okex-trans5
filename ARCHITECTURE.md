@@ -13,7 +13,7 @@
 | 缓存 | Redis | 技术指标计算结果缓存 |
 | RPC框架 | gRPC | 服务间通信 |
 | 序列化 | Protocol Buffers | 高效数据传输 |
-| WebSocket客户端 | Netty | 高性能网络通信 |
+| WebSocket客户端 | Spring WebSocket | 基于标准Java EE WebSocket API的客户端实现 |
 | 框架 | Spring Boot | 2.x (≥4.3) |
 | 代码简化 | Lombok | 用于简化代码（@RequiredArgsConstructor等） |
 | JSON处理 | Jackson | 数据格式转换 |
@@ -61,7 +61,7 @@ okex-trans-5/
 - 配置公共插件（Protocol Buffers编译插件、Maven编译插件等）
 - 定义子模块列表（okex-common、okex-server、okex-client）
 
-关键依赖包括：gRPC、Protocol Buffers、Netty、Spring Boot（版本2.x，需≥4.3）、MongoDB、Redis、Jackson、Lombok（用于简化代码，提供@RequiredArgsConstructor等注解）等。
+关键依赖包括：gRPC、Protocol Buffers、Spring Boot（版本2.x，需≥4.3）、Spring WebSocket、MongoDB、Redis、Jackson、Lombok（用于简化代码，提供@RequiredArgsConstructor等注解）等。
 
 ### 3.2 公共模块 (okex-common)
 
@@ -807,13 +807,122 @@ public class OKExWebSocketClient {
     
     private String extractInterval(String channel) { /* 解析时间间隔 */ }
 }
+```
 
 **功能说明**：
 - 负责与OKEx WebSocket API建立连接并订阅蜡烛数据
 - 解析接收到的WebSocket消息并转换为Candle对象
 - 将处理后的蜡烛数据保存到MongoDB
-- 实现了基本的连接管理和消息处理机制
+- 实现了自动重连机制和心跳检测机制，确保连接稳定性
+
+**自动重连与心跳检测流程**：
+```mermaid
+flowchart TD
+    A[启动WebSocket客户端] --> B[初始化重连次数=0]
+    B --> C[尝试连接OKEx WebSocket]
+    C --> D{连接成功?}
+    D -->|否| E[记录连接失败日志]
+    E --> F[重连次数=重连次数+1]
+    F --> G{重连次数>最大重连尝试次数?}
+    G -->|是| H[记录重连失败超过阈值]
+    G -->|否| I[计算斐波那契重连间隔]
+    I --> J[等待重连间隔时间]
+    J --> C
+    D -->|是| K[重置重连次数=0]
+    K --> L[重新订阅交易对和周期]
+    L --> M[启动心跳定时器]
+    M --> N[发送ping消息]
+    N --> O[等待pong响应]
+    O --> P{在超时时间内收到pong?}
+    P -->|是| Q[重置心跳定时器]
+    Q --> R[继续处理WebSocket消息]
+    P -->|否| S[记录心跳超时日志]
+    S --> T[断开当前连接]
+    R --> U{连接保持正常?}
+    U -->|是| N
+    U -->|否| V[记录连接断开日志到独立的日志文件]
+    V --> F
+    T --> F
+    H --> W[发出告警通知]
 ```
+
+**重连成功后的重新订阅机制**：
+当WebSocket连接断开后，系统会自动尝试重连。一旦重连成功，系统会立即执行以下操作：
+1. 重置重连次数计数器
+2. 重新发送所有之前订阅的交易对和时间周期的订阅请求
+3. 确保与断开前保持相同的订阅状态
+4. 启动心跳定时器，恢复正常的心跳检测
+
+这样可以保证在网络不稳定的情况下，系统能够自动恢复数据接收，无需人工干预。
+
+**配置参数（YAML格式）**：
+
+```yaml
+# WebSocket自动重连配置
+websocket:
+  okex:
+    # 初始重连间隔时间（毫秒）
+    initialReconnectInterval: 1000
+    # 最大重连尝试次数
+    maxReconnectAttempts: 10
+```
+
+**斐波那契递增重连算法**：
+
+系统使用斐波那契数列来计算重连间隔时间，以避免在网络不稳定时频繁重试对服务器造成压力。斐波那契数列定义如下：
+
+$$F(n) = \begin{cases}
+0 & \text{if } n = 0 \\
+1 & \text{if } n = 1 \\
+F(n-1) + F(n-2) & \text{if } n > 1
+\end{cases}$$
+
+重连间隔时间的计算公式为：
+
+$$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
+
+其中：
+- $k$ 为重连尝试次数（从1开始计数）
+- $F(k)$ 为第 $k$ 个斐波那契数
+
+系统通过限制最大重连尝试次数来防止无限增长的间隔时间。
+
+**示例计算**：
+- 第1次重连：$\text{reconnectInterval}(1) = 1000 \times 1 = 1000ms$
+- 第2次重连：$\text{reconnectInterval}(2) = 1000 \times 1 = 1000ms$
+- 第3次重连：$\text{reconnectInterval}(3) = 1000 \times 2 = 2000ms$
+- 第4次重连：$\text{reconnectInterval}(4) = 1000 \times 3 = 3000ms$
+- 第5次重连：$\text{reconnectInterval}(5) = 1000 \times 5 = 5000ms$
+
+**流程说明**：
+1. **连接建立阶段**：
+   - 客户端启动后初始化重连次数为0
+   - 尝试连接OKEx WebSocket，如果连接失败则记录日志
+   - 重连次数加1并检查是否超过最大重连尝试次数
+   - 如果未超过，则计算斐波那契重连间隔并等待后重试
+   - 如果超过最大重连尝试次数，则记录日志并发出告警通知
+   - 连接成功后重置重连次数为0
+   - **重连成功后立即重新订阅所有交易对和时间周期**
+
+2. **订阅管理阶段**：
+   - 连接建立或重连成功后，自动发送所有需要订阅的交易对和时间周期请求
+   - 确保与断开前保持完全相同的订阅状态
+   - 记录订阅请求的发送状态
+
+3. **心跳检测阶段**：
+   - 订阅完成后启动心跳定时器
+   - 定期发送ping消息并等待pong响应
+   - 收到pong响应后重置心跳定时器
+
+4. **异常处理阶段**：
+   - 心跳超时：记录日志并断开连接，触发重连流程
+   - 连接异常断开：记录日志并触发重连流程
+
+5. **正常运行阶段**：
+   - 持续处理WebSocket消息，同时保持心跳检测
+   - 如果连接正常，继续发送心跳消息
+   - 如果连接异常，立即断开并触发重连流程
+   - 重连成功后自动恢复订阅状态
 
 ### 2.4 客户端模块 (okex-client)
 

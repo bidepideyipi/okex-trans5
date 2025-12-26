@@ -2,6 +2,7 @@ package com.supermancell.server.websocket;
 
 import com.supermancell.common.model.Candle;
 import com.supermancell.server.repository.CandleRepository;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
  * - Only keeps the latest candle for each unique key
  */
 @Component
+@RequiredArgsConstructor
 public class CandleBatchWriter {
 
     private static final Logger log = LoggerFactory.getLogger(CandleBatchWriter.class);
@@ -37,10 +39,6 @@ public class CandleBatchWriter {
 
     @Value("${candle.batch.flush.interval.seconds:20}")
     private int flushIntervalSeconds;
-
-    public CandleBatchWriter(CandleRepository candleRepository) {
-        this.candleRepository = candleRepository;
-    }
 
     @PostConstruct
     public void init() {
