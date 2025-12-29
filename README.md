@@ -7,6 +7,16 @@
 
 > 当前为了专注调试 WebSocket 客户端，`okex-server` 中已禁用 MongoDB 自动配置（见 `spring.autoconfigure.exclude`）。后续接入 MongoDB 时可以根据需要调整。
 
+依赖MongoDB做为存储，开发环境需要启动MongoDB服务，启动示例：
+```shell
+cd /usr/local/mongodb/bin
+./mongod --dbpath /usr/local/var/mongodb --logpath /usr/local/var/log/mongodb/mong.log --fork
+```
+依赖Redis做为缓存，开发环境需要启动Redis服务，启动示例：
+```shell
+redis-server &
+```
+
 ### 2. 配置订阅列表
 
 在 `okex-server/src/main/resources/application.yml` 中已有默认配置：

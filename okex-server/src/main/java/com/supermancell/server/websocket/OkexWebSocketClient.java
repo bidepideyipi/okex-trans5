@@ -17,11 +17,15 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.client.WebSocketClient;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -50,8 +54,25 @@ public class OkexWebSocketClient {
     @Value("${websocket.okex.proxy.port:4781}")
     private int proxyPort;
 
+    @Value("${websocket.okex.initialReconnectInterval:1000}")
+    private long initialReconnectIntervalMs;
+
+    @Value("${websocket.okex.maxReconnectAttempts:10}")
+    private int maxReconnectAttempts;
+
+    @Value("${websocket.okex.heartbeat_interval:30000}")
+    private long heartbeatIntervalMs;
+
+    @Value("${websocket.okex.heartbeatTimeout:60000}")
+    private long heartbeatTimeoutMs;
+
     private volatile WebSocketSession session;
     private volatile SubscriptionConfig currentConfig;
+
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private volatile long lastMessageTimestamp = System.currentTimeMillis();
+    private volatile int reconnectAttempts = 0;
+    private volatile boolean heartbeatStarted = false;
 
     @PostConstruct
     public void init() {
@@ -60,6 +81,12 @@ public class OkexWebSocketClient {
         if (config != null) {
             applySubscriptions(config);
         }
+        startHeartbeat();
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        scheduler.shutdownNow();
     }
 
     /**
@@ -106,8 +133,10 @@ public class OkexWebSocketClient {
             WebSocketHandler handler = new OkexWebSocketHandler();
             this.session = webSocketClient.doHandshake(handler, okexWebSocketUrl).get();
             log.info("Connected to OKEx WebSocket: {}", okexWebSocketUrl);
+            onConnected();
         } catch (Exception e) {
             log.error("Failed to connect to OKEx WebSocket", e);
+            scheduleReconnect();
             throw new IllegalStateException("Cannot connect to OKEx WebSocket", e);
         }
     }
@@ -174,6 +203,94 @@ public class OkexWebSocketClient {
         }
     }
 
+    private void onConnected() {
+        reconnectAttempts = 0;
+        lastMessageTimestamp = System.currentTimeMillis();
+        if (currentConfig != null) {
+            // After reconnect, re-subscribe all current pairs
+            sendSubscribeMessages(buildAllPairs(currentConfig));
+        }
+    }
+
+    private void onConnectionLost(String reason, Throwable exception) {
+        log.warn("WebSocket connection lost: {}", reason, exception);
+        WebSocketSession currentSession = this.session;
+        if (currentSession != null) {
+            try {
+                currentSession.close();
+            } catch (IOException e) {
+                log.warn("Error while closing WebSocket session", e);
+            }
+        }
+        this.session = null;
+        scheduleReconnect();
+    }
+
+    private void startHeartbeat() {
+        if (heartbeatStarted) {
+            return;
+        }
+        heartbeatStarted = true;
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                WebSocketSession currentSession = this.session;
+                if (currentSession == null || !currentSession.isOpen()) {
+                    return;
+                }
+                // Send OKEx heartbeat ping
+                try {
+                    currentSession.sendMessage(new TextMessage("ping"));
+                    log.debug("Sent ping to OKEx WebSocket");
+                } catch (IOException e) {
+                    log.warn("Failed to send ping to OKEx WebSocket", e);
+                }
+
+                long now = System.currentTimeMillis();
+                if (now - lastMessageTimestamp > heartbeatTimeoutMs) {
+                    log.warn("WebSocket heartbeat timeout, triggering reconnect");
+                    onConnectionLost("heartbeat-timeout", null);
+                }
+            } catch (Exception e) {
+                log.error("Heartbeat check failed", e);
+            }
+        }, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS);
+    }
+
+    private void scheduleReconnect() {
+        if (maxReconnectAttempts <= 0) {
+            return;
+        }
+        reconnectAttempts++;
+        if (reconnectAttempts > maxReconnectAttempts) {
+            log.error("Max reconnect attempts ({}) exceeded, will not attempt further reconnects", maxReconnectAttempts);
+            return;
+        }
+        long fib = fibonacci(reconnectAttempts);
+        long delay = initialReconnectIntervalMs * fib;
+        log.warn("Scheduling reconnect attempt {} in {} ms (fib={} )", reconnectAttempts, delay, fib);
+        scheduler.schedule(() -> {
+            try {
+                ensureConnected();
+            } catch (Exception e) {
+                log.error("Reconnect attempt {} failed", reconnectAttempts, e);
+            }
+        }, delay, TimeUnit.MILLISECONDS);
+    }
+
+    private long fibonacci(int n) {
+        if (n <= 1) {
+            return 1;
+        }
+        long a = 1;
+        long b = 1;
+        for (int i = 2; i <= n; i++) {
+            long c = a + b;
+            a = b;
+            b = c;
+        }
+        return b;
+    }
+
     private JsonNode buildSubscriptionMessage(String op, Set<SubscriptionPair> subscriptions) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("op", op);
@@ -228,6 +345,7 @@ public class OkexWebSocketClient {
         @Override
         public void afterConnectionEstablished(WebSocketSession session) {
             log.info("OKEx WebSocket connection established");
+            lastMessageTimestamp = System.currentTimeMillis();
         }
 
         @Override
@@ -235,6 +353,13 @@ public class OkexWebSocketClient {
             if (message instanceof TextMessage) {
                 String payload = ((TextMessage) message).getPayload();
                 log.debug("Received message: {}", payload);
+                lastMessageTimestamp = System.currentTimeMillis();
+
+                // OKEx heartbeat pong handling
+                if ("pong".equalsIgnoreCase(payload.trim())) {
+                    log.debug("Received pong from OKEx WebSocket");
+                    return;
+                }
 
                 // Parse and buffer candles for batch write
                 try {
@@ -253,11 +378,13 @@ public class OkexWebSocketClient {
         @Override
         public void handleTransportError(WebSocketSession session, Throwable exception) {
             log.error("WebSocket transport error", exception);
+            onConnectionLost("transport-error", exception);
         }
 
         @Override
         public void afterConnectionClosed(WebSocketSession session, org.springframework.web.socket.CloseStatus closeStatus) {
             log.info("WebSocket connection closed: {}", closeStatus);
+            onConnectionLost("connection-closed", null);
         }
 
         @Override

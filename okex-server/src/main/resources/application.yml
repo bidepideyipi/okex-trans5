@@ -30,6 +30,9 @@ websocket:
     url: wss://ws.okx.com:8443/ws/v5/business
     reconnect_interval: 5000
     heartbeat_interval: 30000
+    initialReconnectInterval: 1000
+    maxReconnectAttempts: 10
+    heartbeatTimeout: 60000
     proxy:
       enabled: true
       type: socks5

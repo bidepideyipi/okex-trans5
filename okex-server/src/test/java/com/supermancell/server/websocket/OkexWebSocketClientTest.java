@@ -9,8 +9,27 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 class OkexWebSocketClientTest {
+
+    private static class TestScheduler extends ScheduledThreadPoolExecutor {
+        private final List<Long> scheduledDelaysMs = new ArrayList<>();
+
+        TestScheduler() {
+            super(1);
+        }
+
+        @Override
+        public java.util.concurrent.ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            scheduledDelaysMs.add(unit.toMillis(delay));
+            // Do not execute the command in tests
+            return Mockito.mock(java.util.concurrent.ScheduledFuture.class);
+        }
+    }
 
     /**
      * WebSocket 订阅 JSON 构造是否正确
@@ -93,5 +112,46 @@ class OkexWebSocketClientTest {
 
         Assertions.assertTrue(hasUnsubscribe, "Expected unsubscribe for removed symbol/interval");
         Assertions.assertTrue(hasSubscribeNew, "Expected subscribe for new symbol/interval");
+    }
+
+    /**
+     * 测试重连
+     * @throws Exception
+     */
+    @Test
+    void shouldScheduleReconnectOnTransportError() throws Exception {
+        SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
+        OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
+        CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
+
+        TestScheduler scheduler = new TestScheduler();
+        ReflectionTestUtils.setField(client, "scheduler", scheduler);
+        ReflectionTestUtils.setField(client, "initialReconnectIntervalMs", 1000L);
+        ReflectionTestUtils.setField(client, "maxReconnectAttempts", 3);
+
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+        ReflectionTestUtils.setField(client, "session", session);
+
+        // Create OkexWebSocketHandler instance via reflection
+        Object handler = null;
+        for (Class<?> innerClass : OkexWebSocketClient.class.getDeclaredClasses()) {
+            if (innerClass.getSimpleName().equals("OkexWebSocketHandler")) {
+                java.lang.reflect.Constructor<?> ctor = innerClass.getDeclaredConstructor(OkexWebSocketClient.class);
+                ctor.setAccessible(true);
+                handler = ctor.newInstance(client);
+                break;
+            }
+        }
+
+        Assertions.assertNotNull(handler, "OkexWebSocketHandler not found via reflection");
+        org.springframework.web.socket.WebSocketHandler wsHandler =
+                (org.springframework.web.socket.WebSocketHandler) handler;
+
+        wsHandler.handleTransportError(session, new RuntimeException("test-error"));
+
+        Assertions.assertFalse(scheduler.scheduledDelaysMs.isEmpty(),
+                "Expected reconnect to be scheduled on transport error");
+        Assertions.assertEquals(1000L, scheduler.scheduledDelaysMs.get(0));
     }
 }
