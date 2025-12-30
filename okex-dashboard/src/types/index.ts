@@ -9,6 +9,20 @@ export const ConnectionStatus = {
 
 export type ConnectionStatus = typeof ConnectionStatus[keyof typeof ConnectionStatus]
 
+// Candle data type (matches backend Candle model)
+export interface Candle {
+  symbol: string
+  timestamp: string
+  interval: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  confirm: string
+  created_at?: string
+}
+
 // WebSocket connection info
 export interface ConnectionInfo {
   status: ConnectionStatus

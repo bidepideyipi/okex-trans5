@@ -10,6 +10,7 @@
         v-for="sub in subscriptions"
         :key="`${sub.symbol}-${sub.interval}`"
         class="subscription-item"
+        @click="openCandleChart(sub)"
       >
         <div class="sub-header">
           <div class="sub-name">
@@ -41,10 +42,12 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useWebSocketStore } from '../../stores/websocket'
 
 const store = useWebSocketStore()
 const { subscriptions } = storeToRefs(store)
+const router = useRouter()
 
 function formatTimestamp(timestamp: string): string {
   return new Date(timestamp).toLocaleString()
@@ -59,6 +62,16 @@ function formatRelativeTime(timestamp: string): string {
   if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   return `${Math.floor(diff / 3600000)}h ago`
+}
+
+function openCandleChart(sub: { symbol: string; interval: string }) {
+  router.push({
+    name: 'candles',
+    params: {
+      symbol: sub.symbol,
+      interval: sub.interval
+    }
+  })
 }
 </script>
 
@@ -104,6 +117,7 @@ function formatRelativeTime(timestamp: string): string {
   border-radius: 6px;
   padding: 16px;
   transition: all 0.3s;
+  cursor: pointer;
 }
 
 .subscription-item:hover {

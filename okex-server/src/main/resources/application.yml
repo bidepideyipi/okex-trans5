@@ -20,6 +20,7 @@ mongodb:
 
 # Redis配置
 redis:
+  enabled: true          # 启用Redis
   host: localhost
   port: 6379
   database: 0
@@ -55,6 +56,21 @@ candle:
     flush:
       interval:
         seconds: 20  # 每20秒批量写入一次数据库
+  integrity:
+    check:
+      enabled: true      # 启用数据完整性检查
+      strict: true       # 严格模式：true=自动从REST API补充数据，false=返回不完整数据并警告
+    fetch:
+      limit: 300         # 从OKEx REST API获取数据的最大数量
+    cache:
+      expire-seconds: 0  # Redis缓存过期时间（秒）：0=禁用缓存，>0=启用缓存并设置过期时间
+
+# OKEx REST API配置
+okex:
+  rest:
+    api:
+      url: https://www.okx.com
+      timeout: 10000     # HTTP连接超时时间（毫秒）
 
 # 日志配置
 logging:

@@ -4,7 +4,8 @@ import type {
   ConnectionInfo,
   ReconnectionRecord,
   SystemMetrics,
-  SubscriptionInfo
+  SubscriptionInfo,
+  Candle
 } from '../types'
 
 class ApiService {
@@ -77,6 +78,12 @@ class ApiService {
       data: { symbol, interval }
     })
   }
-}
 
+  // Get recent candles for a symbol and interval (default last 300)
+  async getCandles(symbol: string, interval: string, limit = 300): Promise<ApiResponse<Candle[]>> {
+    return this.api.get('/candles', {
+      params: { symbol, interval, limit }
+    })
+  }
+}
 export const apiService = new ApiService()

@@ -357,6 +357,8 @@ public class OkexServerApplication {
 | `cache.ttl.boll` | BOLL指标结果缓存过期时间（秒） | 300 |
 | `cache.ttl.macd` | MACD指标结果缓存过期时间（秒） | 300 |
 | `cache.ttl.pinbar` | Pinbar指标结果缓存过期时间（秒） | 300 |
+| `cache.ttl.candle_data` | 蜡烛数据缓存过期时间（秒，用于AOP检查和API请求） | 60 |
+| `cache.ttl.candle_data.enabled` | 是否启用蜡烛数据缓存 | true |
 
 #### 2.3.4 gRPC服务实现
 
@@ -426,31 +428,35 @@ public class IndicatorServiceImpl extends IndicatorServiceGrpc.IndicatorServiceI
 #### 2.3.5 技术指标计算引擎
 
 **功能说明**：
-技术指标计算引擎是系统的核心计算组件，负责协调各个技术指标计算器，为上层提供统一的指标计算接口。采用策略模式，根据不同的指标类型调用对应的计算器实现。
+技术指标计算引擎是系统的核心计算组件，负责协调各个技术指标计算器，为上层提供统一的指标计算接口。采用策略模式，根据不同的指标类型调用对应的计算器实现。同时与共享Redis缓存层集成，支持AOP数据完整性检查和API请求的数据缓存。
 
 **架构流程**：
 
 ```mermaid
 flowchart TD
-    A[接收指标计算请求] --> B[解析请求参数]
-    B --> C{检查缓存}
+    A[接收指标计算请求/API请求] --> B[解析请求参数]
+    B --> C{检查Redis共享缓存}
     C -->|命中| D[返回缓存结果]
     C -->|未命中| E[从MongoDB获取蜡烛数据]
     E --> F[数据完整性检查AOP切面]
-    F -->|数据完整连续| G{判断指标类型}
+    F -->|数据完整连续| G{判断请求类型}
     F -->|数据不完整/不连续| H[从OKEx REST API获取数据]
     H --> I[更新MongoDB]
     I --> G
-    G -->|RSI| J[调用RSI计算器]
-    G -->|BOLL| K[调用BOLL计算器]
-    G -->|MACD| L[调用MACD计算器]
-    G -->|PINBAR| M[调用Pinbar计算器]
-    J --> N[计算结果]
-    K --> N
-    L --> N
-    M --> N
-    N --> O[更新缓存]
-    O --> P[返回计算结果]
+    G -->|指标计算| J{判断指标类型}
+    G -->|API数据请求| K[格式化API响应]
+    J -->|RSI| L[调用RSI计算器]
+    J -->|BOLL| M[调用BOLL计算器]
+    J -->|MACD| N[调用MACD计算器]
+    J -->|PINBAR| O[调用Pinbar计算器]
+    L --> P[计算结果]
+    M --> P
+    N --> P
+    O --> P
+    P --> Q[格式化计算结果]
+    Q --> R[更新Redis共享缓存]
+    K --> R
+    R --> S[返回结果]
 ```
 
 #### 2.3.5.1 蜡烛图数据完整性检查AOP切面
@@ -463,6 +469,7 @@ flowchart TD
 2. **时间连续性检查**：根据时间维度（如1H、4H等）验证蜡烛图时间戳间隔是否正确
 3. **自动数据补充**：当数据不完整或不连续时，从OKEx REST API获取最多300条最新数据
 4. **数据更新机制**：将获取的完整数据重新写入或更新到MongoDB
+5. **Redis缓存优化**：利用Redis的key过期机制，在数据检查成功后缓存N秒，减少重复检查和读库次数，N秒可配置（当N=0时不缓存）
 
 **时间连续性检查规则**：
 | 时间维度 | 预期间隔（秒） |
@@ -479,19 +486,28 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[AOP切面触发] --> B[获取从MongoDB查询的蜡烛数据]
-    B --> C[检查数据数量是否满足要求]
-    C -->|数量不足| D[标记数据不完整]
-    C -->|数量充足| E[检查时间连续性]
-    E -->|时间不连续| D
-    E -->|时间连续| F[数据验证通过]
-    D --> G[构造REST API请求参数]
-    G --> H[调用OKEx REST API获取数据]
-    H --> I[解析API响应数据]
-    I --> J[将数据转换为Candle对象]
-    J --> K[更新MongoDB数据]
-    K --> L[返回完整数据给计算引擎]
-    F --> L
+    A[AOP切面触发] --> B{检查Redis缓存是否存在}
+    B -->|缓存存在| C[从Redis获取缓存数据]
+    C --> D[检查缓存是否未过期]
+    D -->|未过期| L[返回缓存数据给计算引擎]
+    D -->|已过期| E[获取从MongoDB查询的蜡烛数据]
+    B -->|缓存不存在| E
+    E --> F[检查数据数量是否满足要求]
+    F -->|数量不足| G[标记数据不完整]
+    F -->|数量充足| H[检查时间连续性]
+    H -->|时间不连续| G
+    H -->|时间连续| I[数据验证通过]
+    G --> J[构造REST API请求参数]
+    J --> K[调用OKEx REST API获取数据]
+    K --> M[解析API响应数据]
+    M --> N[将数据转换为Candle对象]
+    N --> O[更新MongoDB数据]
+    O --> P{检查缓存配置N是否大于0}
+    P -->|N>0| Q[将完整数据写入Redis并设置N秒过期]
+    P -->|N=0| R[跳过缓存写入]
+    I --> P
+    Q --> L
+    R --> L
 ```
 
 **实现逻辑**：
@@ -503,10 +519,14 @@ classDiagram
     class CandleDataIntegrityAspect {
         + OkexRestClient okexRestClient
         + MongoRepository mongoRepository
+        + RedisCacheService redisCacheService
+        + int cacheExpireSeconds
         + checkCandleDataIntegrity()
         + checkDataCompleteness()
         + checkTimeContinuity()
         + fetchCompleteDataFromApi()
+        + checkRedisCache()
+        + saveToRedisCache()
     }
     
     class OkexRestClient {
@@ -517,45 +537,81 @@ classDiagram
         + saveCandlesBatch(candles)
     }
     
+    class RedisCacheService {
+        + get(String key, Class<T> clazz)
+        + set(String key, Object value, long ttl)
+        + buildCandleDataKey(String symbol, String interval)
+    }
+    
+    class RestApiController {
+        + RedisCacheService redisCacheService
+        + getCandles(String symbol, String interval, int limit)
+    }
+    
     CandleDataIntegrityAspect --> OkexRestClient
     CandleDataIntegrityAspect --> MongoRepository
+    CandleDataIntegrityAspect --> RedisCacheService
+    RestApiController --> RedisCacheService
 ```
 
 **核心流程**：
 
 ```mermaid
 sequenceDiagram
-    participant Client as 计算引擎
+    participant Client as 计算引擎/API请求
     participant Aspect as AOP切面
+    participant Cache as RedisCacheService
     participant MongoDB as 数据库
     participant OKEx as OKEx REST API
     
     Client->>Aspect: 请求蜡烛图数据
-    Aspect->>MongoDB: 查询数据
-    MongoDB-->>Aspect: 返回原始数据
-    Aspect->>Aspect: 检查数据数量
-    Aspect->>Aspect: 检查时间连续性
+    Aspect->>Cache: 构建缓存键并检查缓存
+    Cache-->>Aspect: 返回缓存数据（如果存在且未过期）
     
-    alt 数据完整连续
-        Aspect-->>Client: 返回原始数据
-    else 数据不完整/不连续
-        Aspect->>OKEx: 请求完整数据(最多300条)
-        OKEx-->>Aspect: 返回完整数据
-        Aspect->>MongoDB: 更新数据
-        MongoDB-->>Aspect: 确认更新
+    alt 缓存命中
+        Aspect-->>Client: 返回缓存数据
+    else 缓存未命中
+        Aspect->>MongoDB: 查询数据
+        MongoDB-->>Aspect: 返回原始数据
+        Aspect->>Aspect: 检查数据数量
+        Aspect->>Aspect: 检查时间连续性
+        
+        alt 数据完整连续
+            Aspect->>Aspect: 数据验证通过
+        else 数据不完整/不连续
+            Aspect->>OKEx: 请求完整数据(最多300条)
+            OKEx-->>Aspect: 返回完整数据
+            Aspect->>MongoDB: 更新数据
+            MongoDB-->>Aspect: 确认更新
+        end
+        
+        Aspect->>Aspect: 检查缓存配置N是否大于0
+        
+        alt N>0
+            Aspect->>Cache: 将数据写入共享缓存，设置N秒过期
+            Cache-->>Aspect: 确认缓存写入
+        else N=0
+            Aspect->>Aspect: 跳过缓存写入
+        end
+        
         Aspect-->>Client: 返回完整数据
     end
     
-    Client->>Client: 执行指标计算
+    alt 指标计算请求
+        Client->>Client: 执行指标计算
+    else API请求
+        Client->>Client: 格式化并返回API响应
+    end
 ```
 
 **组件说明**：
 
 1. **CandleDataIntegrityAspect**：
-   - 作为AOP切面拦截技术指标计算方法
+   - 作为AOP切面拦截技术指标计算方法和API数据请求
    - 检查数据完整性和连续性
    - 调用REST API获取完整数据
    - 更新MongoDB数据库
+   - 使用共享的RedisCacheService进行数据缓存
 
 2. **OkexRestClient**：
    - 封装OKEx REST API调用
@@ -564,7 +620,18 @@ sequenceDiagram
 3. **MongoRepository**：
    - 提供数据库操作接口
    - 支持批量保存蜡烛图数据
-    
+
+4. **RedisCacheService**：
+   - 共享缓存服务，同时支持AOP数据完整性检查和API请求
+   - 提供统一的缓存操作接口
+   - 支持TTL过期机制，减少重复计算和数据库访问
+   - 构建标准化的缓存键，确保缓存一致性
+
+5. **RestApiController**：
+   - 提供REST API接口，支持获取蜡烛图数据
+   - 使用共享的RedisCacheService获取缓存数据
+   - 从Active Subscriptions列表点击查看最近300条蜡烛图数据
+
 ```java  
     // 核心计算方法
     public IndicatorResult calculateRSI(java.util.List<Candle> candles, IndicatorParams params) {
@@ -734,30 +801,40 @@ public class MongoRepository implements CandleRepository {
 #### 2.3.8 Redis缓存层
 
 **功能说明**：
-Redis缓存层用于缓存技术指标计算结果，避免重复计算，提高系统响应速度。采用键值对存储方式，支持TTL过期机制。
+Redis缓存层作为共享缓存服务，同时为技术指标计算结果、AOP数据完整性检查结果和蜡烛数据API提供缓存支持。采用键值对存储方式，支持TTL过期机制，减少重复计算和数据库访问，提高系统响应速度。
 
 **缓存结构设计**：
 
 ```text
-Key: RSI:BTC-USDT-SWAP:1m:14
+# 技术指标计算结果缓存
+Key: INDICATOR:RSI:BTC-USDT-SWAP:1m:14
 Value: {"timestamp": "2023-12-25T10:00:00Z", "value": 65.4, "data_points": 100}
 TTL: 30秒
 
-Key: BOLL:BTC-USDT-SWAP:1m:15
+Key: INDICATOR:BOLL:BTC-USDT-SWAP:1m:15
 Value: {"timestamp": "2023-12-25T10:00:00Z", "upper": 42200.0, "middle": 42000.0, "lower": 41800.0, "data_points": 100}
 TTL: 30秒
+
+# 蜡烛数据完整性检查缓存（与API共用）
+Key: CANDLE_DATA:BTC-USDT-SWAP:1m
+Value: [{"symbol": "BTC-USDT-SWAP", "timestamp": "2024-01-15T10:30:00Z", "interval": "1m", "open": 42000.0, "high": 42100.0, "low": 41950.0, "close": 42050.0, "volume": 1250.8, "confirm": "1"}]
+TTL: 可配置（默认60秒）
 ```
 
 **类结构**：
 
 ```java
-// 文件路径: okex-server/src/main/java/com/okex/server/cache/RedisCache.java
+// 文件路径: okex-server/src/main/java/com/okex/server/cache/RedisCacheService.java
 @Component
 @RequiredArgsConstructor
-public class RedisCache {
+public class RedisCacheService {
     // 核心依赖
     private final RedisTemplate<String, Object> redisTemplate;
     private final ValueOperations<String, Object> valueOps;
+    
+    // 缓存键前缀常量
+    public static final String INDICATOR_CACHE_PREFIX = "INDICATOR:";
+    public static final String CANDLE_DATA_CACHE_PREFIX = "CANDLE_DATA:";
     
     // 核心方法
     public void set(String key, Object value, long ttl) {
@@ -770,6 +847,26 @@ public class RedisCache {
     
     public void delete(String key) {
         /* 删除缓存 */
+    }
+    
+    // 批量获取缓存
+    public <T> List<T> getBatch(List<String> keys, Class<T> clazz) {
+        /* 批量获取缓存数据 */
+    }
+    
+    // 批量设置缓存
+    public void setBatch(Map<String, Object> keyValueMap, long ttl) {
+        /* 批量设置缓存数据 */
+    }
+    
+    // 构造蜡烛数据缓存键
+    public String buildCandleDataKey(String symbol, String interval) {
+        return CANDLE_DATA_CACHE_PREFIX + symbol + ":" + interval;
+    }
+    
+    // 构造指标结果缓存键
+    public String buildIndicatorKey(IndicatorType type, String symbol, String interval, String params) {
+        return INDICATOR_CACHE_PREFIX + type.name() + ":" + symbol + ":" + interval + ":" + params;
     }
 }
 ```
@@ -1288,7 +1385,8 @@ okex-dashboard/src/
 ├── components/               # 通用组件
 │   └── dashboard/            # 仪表盘专用组件
 │       ├── ConnectionStatus.vue  # 连接状态组件
-│       └── ReconnectHistory.vue  # 重连记录组件
+│       ├── ReconnectHistory.vue  # 重连记录组件
+│       └── CandleChart.vue  # 蜡烛图组件
 ├── services/                 # API服务层
 │   └── api.ts                # 后端API接口定义
 ├── stores/                   # Pinia状态管理
@@ -1319,6 +1417,15 @@ okex-dashboard/src/
 - 整合连接状态和重连记录组件
 - 提供系统概览和关键指标展示
 - 响应式设计适配不同设备
+
+**蜡烛图组件 (CandleChart.vue)**
+
+- 展示指定交易对和时间周期的最近300条蜡烛图数据
+- 支持从Active Subscriptions列表点击进入查看
+- 使用Chart.js实现蜡烛图可视化
+- 支持时间周期切换和数据刷新
+- 展示开盘价、收盘价、最高价、最低价等关键信息
+- 支持蜡烛图缩放和时间范围选择
 
 #### 3.3.5 状态管理
 
@@ -1447,6 +1554,61 @@ flowchart TD
   ```
   event: connection_status
   data: {"status":"connected","connectionTime":"2024-01-15T10:30:45Z","lastActivity":"2024-01-15T10:45:30Z"}
+  ```
+
+#### 4. 获取蜡烛图数据
+
+- **接口地址**：`GET /api/candles`
+- **请求参数**：
+  
+  | 参数名 | 类型 | 必填 | 描述 |
+  |-------|------|------|------|
+  | symbol | string | 是 | 交易对（如：BTC-USDT-SWAP） |
+  | interval | string | 是 | 时间周期（如：1m、1H） |
+  | limit | number | 否 | 记录数量限制（默认300，最大300） |
+  
+  
+- **响应格式**：`ApiResponse<Candle[]>`
+- **示例响应**：
+  
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "symbol": "BTC-USDT-SWAP",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "interval": "1m",
+        "open": 42000.0,
+        "high": 42100.0,
+        "low": 41950.0,
+        "close": 42050.0,
+        "volume": 1250.8,
+        "confirm": "1"
+      }
+    ]
+  }
+  ```
+
+#### 5. 获取活跃订阅列表
+
+- **接口地址**：`GET /api/subscriptions`
+- **请求参数**：无
+- **响应格式**：`ApiResponse<Subscription[]>`
+- **示例响应**：
+  
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "symbol": "BTC-USDT-SWAP",
+        "interval": "1m",
+        "status": "active",
+        "subscribedAt": "2024-01-15T10:30:45Z"
+      }
+    ]
+  }
   ```
 
 **API通信流程**：
