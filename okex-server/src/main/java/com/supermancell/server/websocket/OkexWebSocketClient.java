@@ -98,12 +98,23 @@ public class OkexWebSocketClient {
         statusService.updateUrl(okexWebSocketUrl);
         statusService.updateConnectionStatus("DISCONNECTED");
         
-        // 启动时加载一次配置并建立订阅
-        SubscriptionConfig config = subscriptionConfigLoader.loadCurrentConfig();
-        if (config != null) {
-            applySubscriptions(config);
-        }
+        // Start heartbeat monitoring
         startHeartbeat();
+        
+        // Asynchronously attempt initial connection and subscription
+        // Don't block application startup if WebSocket connection fails
+        scheduler.execute(() -> {
+            try {
+                Thread.sleep(1000); // Give application time to fully initialize
+                SubscriptionConfig config = subscriptionConfigLoader.loadCurrentConfig();
+                if (config != null) {
+                    applySubscriptions(config);
+                }
+            } catch (Exception e) {
+                log.warn("Initial WebSocket connection failed, will retry automatically", e);
+                // The reconnect mechanism will handle retries
+            }
+        });
     }
 
     @PreDestroy

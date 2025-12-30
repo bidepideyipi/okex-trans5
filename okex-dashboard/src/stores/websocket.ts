@@ -128,6 +128,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     refreshInterval = window.setInterval(() => {
       fetchConnectionStatus()
       fetchSystemMetrics()
+      fetchSubscriptions()
     }, intervalMs)
   }
 

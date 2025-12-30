@@ -1,25 +1,35 @@
 package com.supermancell.server.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.util.List;
 
 /**
- * Subscription request data transfer object
- * Used for adding/removing subscriptions
+ * Subscription update request data transfer object
+ * Used for dynamically updating subscriptions
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class SubscriptionRequest {
     
     /**
-     * Trading symbol (e.g., "BTC-USDT-SWAP", "ETH-USDT-SWAP")
+     * List of trading symbols (e.g., ["BTC-USDT-SWAP", "ETH-USDT-SWAP"])
      */
-    private String symbol;
+    private List<String> symbols;
     
     /**
-     * Time interval (e.g., "1m", "1H", "1D")
+     * List of time intervals (e.g., ["1m", "1H"])
      */
-    private String interval;
+    private List<String> intervals;
+    
+    // Constructors
+    public SubscriptionRequest() {}
+    
+    public SubscriptionRequest(List<String> symbols, List<String> intervals) {
+        this.symbols = symbols;
+        this.intervals = intervals;
+    }
+    
+    // Getters and Setters
+    public List<String> getSymbols() { return symbols; }
+    public void setSymbols(List<String> symbols) { this.symbols = symbols; }
+    
+    public List<String> getIntervals() { return intervals; }
+    public void setIntervals(List<String> intervals) { this.intervals = intervals; }
 }

@@ -46,7 +46,7 @@ class ApiService {
 
   // Get reconnection history
   async getReconnectionHistory(limit = 50): Promise<ApiResponse<ReconnectionRecord[]>> {
-    return this.api.get('/websocket/reconnections', {
+    return this.api.get('/websocket/reconnect-history', {
       params: { limit }
     })
   }
@@ -58,7 +58,7 @@ class ApiService {
 
   // Get subscriptions
   async getSubscriptions(): Promise<ApiResponse<SubscriptionInfo[]>> {
-    return this.api.get('/websocket/subscriptions')
+    return this.api.get('/subscriptions')
   }
 
   // Manually trigger reconnection
