@@ -3,6 +3,7 @@ package com.supermancell.server.cache;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.supermancell.common.model.Candle;
+import com.supermancell.common.model.IndicatorResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,12 +24,16 @@ public class CandleCacheService {
     private static final Logger log = LoggerFactory.getLogger(CandleCacheService.class);
     
     private static final String CACHE_KEY_PREFIX = "candle:integrity:";
+    private static final String INDICATOR_CACHE_PREFIX = "indicator:result:";
     
     private final JedisPool jedisPool;
     private final ObjectMapper objectMapper;
     
     @Value("${redis.enabled:true}")
     private boolean redisEnabled;
+    
+    @Value("${indicator.cache.ttl:300}")
+    private int indicatorCacheTTL;
     
     public CandleCacheService(JedisPool jedisPool, ObjectMapper objectMapper) {
         this.jedisPool = jedisPool;
@@ -195,6 +200,66 @@ public class CandleCacheService {
         } catch (Exception e) {
             log.error("Failed to get TTL for key: {}", cacheKey, e);
             return -1;
+        }
+    }
+    
+    /**
+     * Get cached indicator result from Redis
+     * 
+     * @param cacheKey Cache key for the indicator result
+     * @return Cached IndicatorResult, or null if cache miss
+     */
+    public IndicatorResult getIndicatorResult(String cacheKey) {
+        if (!redisEnabled) {
+            log.debug("Redis is disabled, skipping indicator cache lookup");
+            return null;
+        }
+        
+        try (Jedis jedis = jedisPool.getResource()) {
+            String cachedJson = jedis.get(cacheKey);
+            
+            if (cachedJson == null) {
+                log.debug("Indicator cache miss for key: {}", cacheKey);
+                return null;
+            }
+            
+            IndicatorResult result = objectMapper.readValue(cachedJson, IndicatorResult.class);
+            log.debug("Indicator cache hit for key: {}", cacheKey);
+            return result;
+            
+        } catch (Exception e) {
+            log.error("Failed to get cached indicator result for key: {}", cacheKey, e);
+            return null;
+        }
+    }
+    
+    /**
+     * Cache indicator result to Redis with TTL
+     * 
+     * @param cacheKey Cache key for the indicator result
+     * @param result IndicatorResult to cache
+     */
+    public void cacheIndicatorResult(String cacheKey, IndicatorResult result) {
+        if (!redisEnabled) {
+            log.debug("Redis is disabled, skipping indicator cache save");
+            return;
+        }
+        
+        if (result == null) {
+            log.warn("Cannot cache null indicator result");
+            return;
+        }
+        
+        try (Jedis jedis = jedisPool.getResource()) {
+            String resultJson = objectMapper.writeValueAsString(result);
+            
+            // Set with expiration
+            jedis.setex(cacheKey, indicatorCacheTTL, resultJson);
+            
+            log.debug("Cached indicator result for key: {} with TTL: {}s", cacheKey, indicatorCacheTTL);
+            
+        } catch (Exception e) {
+            log.error("Failed to cache indicator result for key: {}", cacheKey, e);
         }
     }
 }

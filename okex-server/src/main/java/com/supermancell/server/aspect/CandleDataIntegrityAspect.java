@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,19 +46,10 @@ public class CandleDataIntegrityAspect {
     // Time interval to expected gap in seconds
     private static final Map<String, Long> INTERVAL_GAPS = new HashMap<>();
     
+    //系统只会订阅1m和1H两，其它时间维度后期可以通过聚合算法合成
     static {
         INTERVAL_GAPS.put("1m", 60L);
-        INTERVAL_GAPS.put("3m", 180L);
-        INTERVAL_GAPS.put("5m", 300L);
-        INTERVAL_GAPS.put("15m", 900L);
-        INTERVAL_GAPS.put("30m", 1800L);
         INTERVAL_GAPS.put("1H", 3600L);
-        INTERVAL_GAPS.put("2H", 7200L);
-        INTERVAL_GAPS.put("4H", 14400L);
-        INTERVAL_GAPS.put("6H", 21600L);
-        INTERVAL_GAPS.put("12H", 43200L);
-        INTERVAL_GAPS.put("1D", 86400L);
-        INTERVAL_GAPS.put("1W", 604800L);
     }
     
     public CandleDataIntegrityAspect(OkexRestClient okexRestClient, 
@@ -101,6 +91,7 @@ public class CandleDataIntegrityAspect {
         }
         
         // Step 2: Cache miss - query MongoDB
+        @SuppressWarnings("unchecked")
         List<Candle> candles = (List<Candle>) joinPoint.proceed();
         
         // Step 3: Validate data completeness and continuity
