@@ -2,6 +2,7 @@ package com.supermancell.server.websocket;
 
 import com.supermancell.common.model.Candle;
 import com.supermancell.server.repository.CandleRepository;
+import com.supermancell.server.service.SystemMetricsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -19,13 +20,16 @@ class CandleBatchWriterTest {
 
     @Mock
     private CandleRepository candleRepository;
+    
+    @Mock
+    private SystemMetricsService metricsService;
 
     private CandleBatchWriter batchWriter;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        batchWriter = new CandleBatchWriter(candleRepository);
+        batchWriter = new CandleBatchWriter(candleRepository, metricsService);
         // Set flush interval to prevent automatic scheduling during tests
         ReflectionTestUtils.setField(batchWriter, "flushIntervalSeconds", 3600);
     }

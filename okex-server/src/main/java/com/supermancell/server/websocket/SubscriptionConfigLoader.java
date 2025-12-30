@@ -1,6 +1,5 @@
 package com.supermancell.server.websocket;
 
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,7 +14,6 @@ import java.util.List;
 import java.util.Properties;
 
 @Component
-@RequiredArgsConstructor
 public class SubscriptionConfigLoader {
 
     private static final Logger log = LoggerFactory.getLogger(SubscriptionConfigLoader.class);
@@ -24,6 +22,11 @@ public class SubscriptionConfigLoader {
 
     @Value("${subscription.refresh-interval-ms:60000}")
     private long refreshIntervalMs;
+    
+    // Explicit constructor
+    public SubscriptionConfigLoader(Environment environment) {
+        this.environment = environment;
+    }
 
     /**
      * 加载当前订阅配置。优先从工作目录下的 application.yml 读取，

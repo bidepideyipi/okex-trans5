@@ -7,7 +7,9 @@
 | 分类 | 技术 | 版本/说明 |
 |------|------|-----------|
 | 开发语言 | Java | 8 (JDK 1.8) |
+| 开发语言 | TypeScript | ~5.9.3 |
 | 构建工具 | Maven | 3.x |
+| 构建工具 | Vite | 7.2.5 |
 | 数据源 | OKEx WebSocket API | 实时行情数据 |
 | 数据库 | MongoDB | 存储蜡烛图数据 |
 | 缓存 | Redis | 技术指标计算结果缓存 |
@@ -15,26 +17,31 @@
 | 序列化 | Protocol Buffers | 高效数据传输 |
 | WebSocket客户端 | Spring WebSocket | 基于标准Java EE WebSocket API的客户端实现 |
 | 框架 | Spring Boot | 2.x (≥4.3) |
+| 前端框架 | Vue | 3.5.24 |
+| 状态管理 | Pinia | 3.0.4 |
+| 前端路由 | Vue Router | 4.6.4 |
+| 图表库 | Chart.js | 4.5.1 |
+| HTTP客户端 | Axios | 1.13.2 |
 | 代码简化 | Lombok | 用于简化代码（@RequiredArgsConstructor等） |
 | JSON处理 | Jackson | 数据格式转换 |
 | 日志 | SLF4J | 日志记录API |
 
 ## 2. 项目结构
 
-### 2.1 Maven多模块工程结构
+## 2. 项目结构
+
+### 2.1 整体项目结构
 
 ```
 okex-trans-5/
-├── pom.xml                           # 父工程POM
-├── okex-common/                      # 公共模块
-│   ├── pom.xml
+├── doc/                              # 文档目录
+├── okex-common/                      # 公共模块（Maven）
 │   └── src/main/java/com/okex/common/
 │       ├── proto/                    # Protocol Buffers定义
 │       ├── model/                    # 数据模型
 │       ├── util/                     # 工具类
 │       └── exception/                # 异常定义
-├── okex-server/                      # 服务端模块
-│   ├── pom.xml
+├── okex-server/                      # 服务端模块（Maven）
 │   └── src/main/java/com/okex/server/
 │       ├── grpc/                     # gRPC服务实现
 │       ├── service/                  # 业务服务
@@ -42,20 +49,34 @@ okex-trans-5/
 │       ├── storage/                  # 数据存储
 │       ├── config/                   # 配置管理
 │       └── websocket/                # WebSocket客户端
-└── okex-client/                      # 客户端模块
-    ├── pom.xml
-    └── src/main/java/com/okex/client/
-        ├── grpc/                     # gRPC客户端
-        ├── service/                  # 客户端服务
-        └── example/                  # 使用示例
+├── okex-client/                      # 客户端模块（Maven）
+│   └── src/main/java/com/okex/client/
+│       ├── grpc/                     # gRPC客户端
+│       ├── service/                  # 客户端服务
+│       └── example/                  # 使用示例
+└── okex-dashboard/                   # Vue管理台（Vite+Vue）
+    └── src/
+        ├── components/               # 组件目录
+        │   └── dashboard/            # 仪表盘组件
+        ├── services/                 # API服务
+        ├── stores/                   # 状态管理
+        ├── types/                    # TypeScript类型定义
+        └── views/                    # 页面视图
+            └── dashboard/            # 仪表盘页面
 ```
+
+### 2.2 Maven多模块工程结构
+
+Maven多模块工程结构包含三个核心Java模块：okex-common、okex-server和okex-client，它们通过Maven父工程统一管理依赖版本和构建配置。
 
 ## 3. 模块详细设计
 
 ### 3.1 父工程 (okex-trans-5)
 
 #### 3.1.1 Maven配置
+
 父工程使用Maven管理多模块项目，主要职责包括：
+
 - 定义项目基本信息（groupId、artifactId、version）
 - 管理所有模块的依赖版本，确保版本一致性
 - 配置公共插件（Protocol Buffers编译插件、Maven编译插件等）
@@ -66,9 +87,11 @@ okex-trans-5/
 ### 3.2 公共模块 (okex-common)
 
 #### 3.2.1 Maven配置
+
 okex-common模块是项目的公共模块，提供共享的模型和工具类。
 
 主要依赖：
+
 - Protocol Buffers（序列化框架）
 - Jackson（JSON处理）
 - SLF4J（日志API）
@@ -283,9 +306,11 @@ public interface TechnicalIndicator {
 ### 2.3 服务端模块 (okex-server)
 
 #### 2.3.1 Maven配置
+
 okex-server模块是项目的核心服务模块，负责WebSocket连接管理、数据处理和gRPC服务提供。
 
 主要依赖：
+
 - okex-common（公共模块）
 - Spring Boot（应用框架）
 - MongoDB（数据存储）
@@ -312,6 +337,7 @@ public class OkexServerApplication {
 服务端模块使用Spring Boot的配置管理机制，支持通过application.properties或application.yml文件进行配置。主要配置项包括：
 
 **技术指标默认配置**：
+
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `indicator.rsi.default-period` | RSI指标默认周期 | 14 |
@@ -324,6 +350,7 @@ public class OkexServerApplication {
 | `indicator.pinbar.default-wick-ratio` | Pinbar指标默认影线比例阈值 | 0.6 |
 
 **缓存配置**：
+
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `cache.ttl.rsi` | RSI指标结果缓存过期时间（秒） | 300 |
@@ -337,6 +364,7 @@ public class OkexServerApplication {
 gRPC服务实现负责处理客户端的指标计算请求，从MongoDB获取历史蜡烛数据，调用指标计算引擎计算结果，然后返回给客户端。
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/grpc/IndicatorServiceImpl.java
 @GrpcService
@@ -395,12 +423,13 @@ public class IndicatorServiceImpl extends IndicatorServiceGrpc.IndicatorServiceI
 }
 ```
 
-#### 2.3.4 技术指标计算引擎
+#### 2.3.5 技术指标计算引擎
 
 **功能说明**：
 技术指标计算引擎是系统的核心计算组件，负责协调各个技术指标计算器，为上层提供统一的指标计算接口。采用策略模式，根据不同的指标类型调用对应的计算器实现。
 
 **架构流程**：
+
 ```mermaid
 flowchart TD
     A[接收指标计算请求] --> B[解析请求参数]
@@ -421,6 +450,7 @@ flowchart TD
 ```
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/service/CalculationEngine.java
 @Service
@@ -451,12 +481,13 @@ public class CalculationEngine {
 }
 ```
 
-#### 2.3.5 技术指标计算器
+#### 2.3.6 技术指标计算器
 
 **功能说明**：
 技术指标计算器负责实现各种技术指标的具体计算逻辑。系统采用策略模式，通过实现TechnicalIndicator接口的不同计算器类来支持多种技术指标。
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/processor/RSICalculator.java
 @Component
@@ -529,7 +560,7 @@ public class MACDCalculator implements TechnicalIndicator {
 }
 ```
 
-#### 2.3.6 数据存储层
+#### 2.3.7 数据存储层
 
 **功能说明**：
 数据存储层负责将蜡烛数据持久化到MongoDB数据库，并提供查询接口。采用Repository模式，通过MongoRepository实现CandleRepository接口，封装数据库操作细节。
@@ -552,11 +583,13 @@ public class MACDCalculator implements TechnicalIndicator {
 ```
 
 **confirm字段说明**:
+
 - "0": 蜡烛图未确认(仍在形成中)
 - "1": 蜡烛图已确认(时间周期已完成)
 - 对于数据校验和历史分析非常重要,只有confirm="1"的数据才应该用于最终计算
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/storage/MongoRepository.java
 package com.okex.server.storage;
@@ -592,15 +625,16 @@ public class MongoRepository implements CandleRepository {
         /* 批量保存蜡烛数据到MongoDB */
     }
 }
+```
 
-#### 2.3.7 Redis缓存层
+#### 2.3.8 Redis缓存层
 
 **功能说明**：
 Redis缓存层用于缓存技术指标计算结果，避免重复计算，提高系统响应速度。采用键值对存储方式，支持TTL过期机制。
 
 **缓存结构设计**：
 
-```
+```text
 Key: RSI:BTC-USDT-SWAP:1m:14
 Value: {"timestamp": "2023-12-25T10:00:00Z", "value": 65.4, "data_points": 100}
 TTL: 30秒
@@ -611,6 +645,7 @@ TTL: 30秒
 ```
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/cache/RedisCache.java
 @Component
@@ -633,13 +668,15 @@ public class RedisCache {
         /* 删除缓存 */
     }
 }
+```
 
-#### 2.3.8 批量写入机制
+#### 2.3.9 批量写入机制
 
 **功能说明**：
 为了提高数据写入性能，系统实现了基于时间窗口的批量写入MongoDB机制。该机制将WebSocket接收的蜡烛数据暂存，然后在固定时间窗口（默认20秒，可配置）内批量写入MongoDB，减少数据库连接开销。
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/websocket/CandleBatchWriter.java
 package com.okex.server.websocket;
@@ -781,9 +818,10 @@ public class CacheService {
 }
 ```
 
-#### 2.3.8 WebSocket客户端
+#### 2.3.10 WebSocket客户端
 
 **类结构**：
+
 ```java
 // 文件路径: okex-server/src/main/java/com/okex/server/websocket/OKExWebSocketClient.java
 @Component
@@ -810,12 +848,14 @@ public class OKExWebSocketClient {
 ```
 
 **功能说明**：
+
 - 负责与OKEx WebSocket API建立连接并订阅蜡烛数据
 - 解析接收到的WebSocket消息并转换为Candle对象
 - 将处理后的蜡烛数据保存到MongoDB
 - 实现了自动重连机制和心跳检测机制，确保连接稳定性
 
 **自动重连与心跳检测流程**：
+
 ```mermaid
 flowchart TD
     A[启动WebSocket客户端] --> B[初始化重连次数=0]
@@ -848,6 +888,7 @@ flowchart TD
 
 **重连成功后的重新订阅机制**：
 当WebSocket连接断开后，系统会自动尝试重连。一旦重连成功，系统会立即执行以下操作：
+
 1. 重置重连次数计数器
 2. 重新发送所有之前订阅的交易对和时间周期的订阅请求
 3. 确保与断开前保持相同的订阅状态
@@ -871,23 +912,29 @@ websocket:
 
 系统使用斐波那契数列来计算重连间隔时间，以避免在网络不稳定时频繁重试对服务器造成压力。斐波那契数列定义如下：
 
-$$F(n) = \begin{cases}
+$$
+F(n) = \begin{cases}
 0 & \text{if } n = 0 \\
 1 & \text{if } n = 1 \\
 F(n-1) + F(n-2) & \text{if } n > 1
-\end{cases}$$
+\end{cases}
+$$
 
 重连间隔时间的计算公式为：
 
-$$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
+$$
+\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)
+$$
 
 其中：
+
 - $k$ 为重连尝试次数（从1开始计数）
 - $F(k)$ 为第 $k$ 个斐波那契数
 
 系统通过限制最大重连尝试次数来防止无限增长的间隔时间。
 
 **示例计算**：
+
 - 第1次重连：$\text{reconnectInterval}(1) = 1000 \times 1 = 1000ms$
 - 第2次重连：$\text{reconnectInterval}(2) = 1000 \times 1 = 1000ms$
 - 第3次重连：$\text{reconnectInterval}(3) = 1000 \times 2 = 2000ms$
@@ -895,7 +942,9 @@ $$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
 - 第5次重连：$\text{reconnectInterval}(5) = 1000 \times 5 = 5000ms$
 
 **流程说明**：
+
 1. **连接建立阶段**：
+   
    - 客户端启动后初始化重连次数为0
    - 尝试连接OKEx WebSocket，如果连接失败则记录日志
    - 重连次数加1并检查是否超过最大重连尝试次数
@@ -903,22 +952,22 @@ $$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
    - 如果超过最大重连尝试次数，则记录日志并发出告警通知
    - 连接成功后重置重连次数为0
    - **重连成功后立即重新订阅所有交易对和时间周期**
-
 2. **订阅管理阶段**：
+   
    - 连接建立或重连成功后，自动发送所有需要订阅的交易对和时间周期请求
    - 确保与断开前保持完全相同的订阅状态
    - 记录订阅请求的发送状态
-
 3. **心跳检测阶段**：
+   
    - 订阅完成后启动心跳定时器
    - 定期发送ping消息并等待pong响应
    - 收到pong响应后重置心跳定时器
-
 4. **异常处理阶段**：
+   
    - 心跳超时：记录日志并断开连接，触发重连流程
    - 连接异常断开：记录日志并触发重连流程
-
 5. **正常运行阶段**：
+   
    - 持续处理WebSocket消息，同时保持心跳检测
    - 如果连接正常，继续发送心跳消息
    - 如果连接异常，立即断开并触发重连流程
@@ -931,6 +980,7 @@ $$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
 **客户端模块POM配置**：
 
 客户端模块是一个独立的Spring Boot应用，主要依赖：
+
 - okex-common（公共模块）
 - Spring Boot（应用框架）
 - gRPC客户端依赖
@@ -945,6 +995,7 @@ $$\text{reconnectInterval}(k) = \text{initialReconnectInterval} \times F(k)$$
 客户端启动类是Spring Boot应用的入口点，负责初始化应用上下文并启动服务。
 
 **类结构**：
+
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/OkexClientApplication.java
 package com.okex.client;
@@ -963,6 +1014,7 @@ public class OkexClientApplication {
 客户端服务实现负责与服务端建立gRPC连接，并提供便捷的方法调用服务端的技术指标计算接口。
 
 **类结构**：
+
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/service/IndicatorClientService.java
 package com.okex.client.service;
@@ -1002,6 +1054,7 @@ public class IndicatorClientService {
 提供客户端服务的使用示例，展示如何调用不同技术指标的计算接口。
 
 **示例结构**：
+
 ```java
 // 文件路径: okex-client/src/main/java/com/okex/client/example/ClientExample.java
 @Component
@@ -1039,6 +1092,7 @@ public class ClientExample implements CommandLineRunner {
 **服务端配置**：
 
 服务端模块通过application.yml配置文件进行配置，主要包括：
+
 - HTTP服务端口
 - gRPC服务端口
 - MongoDB连接信息
@@ -1047,34 +1101,47 @@ public class ClientExample implements CommandLineRunner {
 
 **配置路径**：okex-server/src/main/resources/application.yml
 
+```properties
 spring:
   application:
     name: okex-server
+```
 
 # MongoDB配置
+
+```properties
 mongodb:
-  host: localhost
-  port: 27017
-  database: okex_data
+host: localhost
+port: 27017
+database: okex_data
+```
 
 # Redis配置
+
+```properties
 redis:
-  host: localhost
-  port: 6379
-  database: 0
+host: localhost
+port: 6379
+database: 0
+```
 
 # WebSocket配置
+
+```properties
 websocket:
-  okex:
-    url: wss://ws.okx.com:8443/ws/v5/public
-    reconnect_interval: 5000
-    heartbeat_interval: 30000
+okex:
+url: wss://ws.okx.com:8443/ws/v5/public
+reconnect_interval: 5000
+heartbeat_interval: 30000
+```
 
 # 日志配置
+
+```properties
 logging:
-  level:
-    com.okex: DEBUG
-    root: INFO
+level:
+com.okex: DEBUG
+root: INFO
 ```
 
 ### 3.2 客户端配置文件
@@ -1082,21 +1149,329 @@ logging:
 **客户端配置**：
 
 客户端模块通过application.yml配置文件进行配置，主要包括：
+
 - Spring应用名称
 - gRPC服务端连接信息（地址、端口、协商类型）
 - 日志级别配置
 
 **配置路径**：okex-client/src/main/resources/application.yml
 
+### 3.3 Vue管理台模块 (okex-dashboard)
+
+#### 3.3.1 模块概述
+
+okex-dashboard是基于Vue 3 + TypeScript + Vite构建的Web管理台，提供WebSocket连接状态监控、重连记录查看等可观测性功能，帮助用户实时了解系统运行状态。
+
+#### 3.3.2 技术栈
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Vue | 3.5.24 | 前端框架 |
+| TypeScript | ~5.9.3 | 类型安全开发 |
+| Vite | 7.2.5 | 构建工具 |
+| Pinia | 3.0.4 | 状态管理 |
+| Vue Router | 4.6.4 | 前端路由 |
+| Chart.js | 4.5.1 | 图表展示 |
+| Axios | 1.13.2 | HTTP客户端 |
+| @vueuse/core | 14.1.0 | Vue组合式API工具集 |
+
+#### 3.3.3 项目结构
+
+```
+okex-dashboard/src/
+├── App.vue                   # 根组件
+├── main.ts                   # 应用入口
+├── components/               # 通用组件
+│   └── dashboard/            # 仪表盘专用组件
+│       ├── ConnectionStatus.vue  # 连接状态组件
+│       └── ReconnectHistory.vue  # 重连记录组件
+├── services/                 # API服务层
+│   └── api.ts                # 后端API接口定义
+├── stores/                   # Pinia状态管理
+│   └── websocket.ts          # WebSocket状态存储
+├── types/                    # TypeScript类型定义
+│   └── index.ts              # 通用类型定义
+└── views/                    # 页面视图
+└── dashboard/            # 仪表盘页面
+└── Index.vue         # 仪表盘主页
+```
+
+#### 3.3.4 核心功能组件
+
+**连接状态组件 (ConnectionStatus.vue)**
+
+- 实时显示WebSocket连接状态（已连接/断开连接/重连中）
+- 展示连接时长和最后活动时间
+- 使用颜色编码直观表示状态变化
+
+**重连记录组件 (ReconnectHistory.vue)**
+
+- 展示历史重连记录列表
+- 包括重连时间、状态和持续时长
+- 支持按时间范围筛选和搜索
+
+**仪表盘主页 (Index.vue)**
+
+- 整合连接状态和重连记录组件
+- 提供系统概览和关键指标展示
+- 响应式设计适配不同设备
+
+#### 3.3.5 状态管理
+
+使用Pinia进行状态管理，主要包括：
+
+- WebSocket连接状态
+- 重连历史记录
+- 系统配置信息
+
+**核心状态结构**：
+
+```typescript
+// 重连记录接口
+export interface ReconnectRecord {
+  timestamp: Date;
+  status: 'success' | 'failure';
+  duration: number; // 重连耗时（毫秒）
+}
+```
+
+##### 3.3.5.1 状态管理结构
+
+#### WebSocket状态存储 (websocket)
+
+| 类别 | 名称 | 类型 | 描述 |
+|------|------|------|------|
+| **State** | connectionStatus | string | 连接状态：connected/disconnected/reconnecting |
+| | connectionTime | string | 连接建立时间（ISO格式） |
+| | reconnectHistory | ReconnectRecord[] | 重连历史记录列表 |
+| **Actions** | updateConnectionStatus | function | 更新连接状态
+| | addReconnectRecord | function | 添加重连记录 |
+| **Getters** | currentStatus | function | 获取当前连接状态 |
+| | recentReconnects | function | 获取最近的重连记录 |
+
+
+**状态管理数据流**：
+
+```mermaid
+flowchart TD
+    A[API获取连接状态] -->|更新状态| B[WebSocketStore]
+    C[重连事件] -->|记录重连| B
+    B -->|状态变化| D[ConnectionStatus组件]
+    B -->|历史记录| E[ReconnectHistory组件]
+    F[用户操作] -->|触发更新| B
+```
+
+#### 3.3.6 API通信
+
+前端通过HTTP REST API与后端服务通信，后端提供统一的REST API封装层，内部调用gRPC服务。主要API接口如下：
+
+##### 3.3.6.1 数据类型定义
+
+| 数据类型 | 字段 | 类型 | 描述 |
+|---------|------|------|------|
+| ApiResponse | success | boolean | 请求是否成功 |
+| | data | T | 响应数据 |
+| | message | string | 响应消息（可选） |
+
+| 数据类型 | 字段 | 类型 | 描述 |
+|---------|------|------|------|
+| ConnectionStatus | status | string | 连接状态：connected/disconnected/reconnecting |
+| | connectionTime | string | 连接建立时间（ISO格式） |
+| | lastActivity | string | 最后活动时间（ISO格式） |
+
+| 数据类型 | 字段 | 类型 | 描述 |
+|---------|------|------|------|
+| ReconnectRecord | id | string | 记录ID |
+| | timestamp | string | 重连时间（ISO格式） |
+| | duration | number | 连接时长（毫秒） |
+| | reason | string | 重连原因 |
+
+##### 3.3.6.2 REST API接口列表
+
+#### 1. 获取WebSocket连接状态
+
+- **接口地址**：`GET /api/websocket/status`
+- **请求参数**：无
+- **响应格式**：`ApiResponse<ConnectionStatus>`
+- **示例响应**：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "status": "connected",
+      "connectionTime": "2024-01-15T10:30:45Z",
+      "lastActivity": "2024-01-15T10:45:30Z"
+    }
+  }
+  ```
+
+#### 2. 获取重连历史记录
+
+- **接口地址**：`GET /api/websocket/reconnect-history`
+- **请求参数**：
+  
+  | 参数名 | 类型 | 必填 | 描述 |
+|-------|------|------|------|
+| startDate | string | 否 | 开始时间（ISO格式） |
+| endDate | string | 否 | 结束时间（ISO格式） |
+| limit | number | 否 | 记录数量限制（默认100） |
+  
+  
+- **响应格式**：`ApiResponse<ReconnectRecord[]>`
+- **示例响应**：
+  
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "rec_123",
+        "timestamp": "2024-01-15T10:30:45Z",
+        "duration": 3600000,
+        "reason": "网络波动"
+      }
+    ]
+  }
+  ```
+
+#### 3. 实时状态推送（SSE）
+
+- **接口地址**：`GET /api/websocket/events`
+- **请求参数**：无
+- **响应格式**：Server-Sent Events (SSE)
+- **事件格式**：
+  ```
+  event: connection_status
+  data: {"status":"connected","connectionTime":"2024-01-15T10:30:45Z","lastActivity":"2024-01-15T10:45:30Z"}
+  ```
+
+**API通信流程**：
+
+```mermaid
+sequenceDiagram
+    participant Client as Vue管理台
+    participant API as REST API层
+    participant gRPC as 后端gRPC服务
+    
+    Client->>API: GET /api/websocket/status
+    API->>gRPC: gRPC调用获取状态
+    gRPC-->>API: 返回gRPC响应
+    API-->>Client: 返回JSON格式状态
+    
+    Client->>API: GET /api/websocket/reconnect-history
+    API->>gRPC: gRPC调用获取历史
+    gRPC-->>API: 返回gRPC响应
+    API-->>Client: 返回JSON格式历史
+    
+    Client->>API: 建立SSE连接 /api/websocket/events
+    API->>gRPC: 订阅gRPC流式响应
+    loop 状态变化
+        gRPC-->>API: 推送gRPC状态
+        API-->>Client: 推送SSE事件
+    end
+```
+
+#### 3.3.7 数据流
+
+```mermaid
+flowchart TD
+    A[用户访问仪表盘页面] --> B[应用初始化]
+    B --> C[加载WebSocket初始状态]
+    C --> D[建立状态订阅]
+    D --> E{选择订阅方式}
+    E -->|HTTP轮询| F[定期请求状态API]
+    E -->|WebSocket/SSE| G[建立实时推送连接]
+    F --> H[更新Pinia状态]
+    G --> H
+    H --> I[触发组件重新渲染]
+    I --> J[展示实时连接状态]
+    J --> K[可查看历史重连记录]
+```
+
 ## 4. 构建和运行
 
 ### 4.1 构建方式
 
-项目采用Maven进行构建管理，支持整体构建和模块化构建。
+项目采用混合构建方式，Java模块使用Maven，Vue管理台使用Vite：
+
+**Java模块构建**
+
+```bash
+# 整体构建（包含所有Java模块）
+mvn clean install
+
+# 单独构建服务端
+cd okex-server
+mvn clean package
+
+# 单独构建客户端
+cd okex-client
+mvn clean package
+```
+
+**Vue管理台构建**
+
+```bash
+# 进入管理台目录
+cd okex-dashboard
+
+# 安装依赖
+npm install
+
+# 开发构建
+npm run build
+
+# 生产构建（优化版本）
+npm run build -- --mode production
+```
 
 ### 4.2 运行方式
 
-服务端和客户端均为独立的Spring Boot应用，可通过jar包方式运行。
+**服务端运行**
+
+```bash
+cd okex-server
+java -jar target/okex-server-1.0.0.jar
+```
+
+**客户端运行**
+
+```bash
+cd okex-client
+java -jar target/okex-client-1.0.0.jar
+```
+
+**Vue管理台运行**
+
+```bash
+# 开发模式（带热更新）
+cd okex-dashboard
+npm run dev
+
+# 生产模式（需要先构建）
+# 构建完成后使用静态文件服务器部署dist目录
+npm install -g serve
+cd okex-dashboard
+serve -s dist
+```
+
+**Docker部署**（可选）
+Vue管理台支持Docker部署，可通过Dockerfile构建镜像：
+
+```dockerfile
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html
+EXPOSE 80
+```
+
+构建并运行Docker容器：
+
+```bash
+cd okex-dashboard
+npm run build
+docker build -t okex-dashboard .
+docker run -p 8080:80 okex-dashboard
+```
 
 ## 5. 监控和运维
 
@@ -1120,3 +1495,4 @@ logging:
 - 批量操作优化
 
 这个架构设计提供了清晰的模块分离，便于开发、测试和维护。
+

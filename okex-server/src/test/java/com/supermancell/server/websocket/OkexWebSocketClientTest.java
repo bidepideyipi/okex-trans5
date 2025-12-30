@@ -1,5 +1,7 @@
 package com.supermancell.server.websocket;
 
+import com.supermancell.server.service.SystemMetricsService;
+import com.supermancell.server.service.WebSocketStatusService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -40,7 +42,9 @@ class OkexWebSocketClientTest {
         SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
         OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
         CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
-        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
+        WebSocketStatusService statusService = Mockito.mock(WebSocketStatusService.class);
+        SystemMetricsService metricsService = Mockito.mock(SystemMetricsService.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter, statusService, metricsService);
 
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Mockito.when(session.isOpen()).thenReturn(true);
@@ -74,7 +78,9 @@ class OkexWebSocketClientTest {
         SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
         OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
         CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
-        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
+        WebSocketStatusService statusService = Mockito.mock(WebSocketStatusService.class);
+        SystemMetricsService metricsService = Mockito.mock(SystemMetricsService.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter, statusService, metricsService);
 
         WebSocketSession session = Mockito.mock(WebSocketSession.class);
         Mockito.when(session.isOpen()).thenReturn(true);
@@ -123,7 +129,9 @@ class OkexWebSocketClientTest {
         SubscriptionConfigLoader loader = Mockito.mock(SubscriptionConfigLoader.class);
         OkexMessageParser parser = Mockito.mock(OkexMessageParser.class);
         CandleBatchWriter batchWriter = Mockito.mock(CandleBatchWriter.class);
-        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter);
+        WebSocketStatusService statusService = Mockito.mock(WebSocketStatusService.class);
+        SystemMetricsService metricsService = Mockito.mock(SystemMetricsService.class);
+        OkexWebSocketClient client = new OkexWebSocketClient(loader, parser, batchWriter, statusService, metricsService);
 
         TestScheduler scheduler = new TestScheduler();
         ReflectionTestUtils.setField(client, "scheduler", scheduler);

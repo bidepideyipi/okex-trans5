@@ -5,7 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supermancell.common.model.Candle;
-import lombok.RequiredArgsConstructor;
+import com.supermancell.server.service.SystemMetricsService;
+import com.supermancell.server.service.WebSocketStatusService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,16 +29,33 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class OkexWebSocketClient {
 
     private static final Logger log = LoggerFactory.getLogger(OkexWebSocketClient.class);
 
-    private final WebSocketClient webSocketClient = new StandardWebSocketClient();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final WebSocketClient webSocketClient;
+    private final ObjectMapper objectMapper;
     private final SubscriptionConfigLoader subscriptionConfigLoader;
     private final OkexMessageParser messageParser;
     private final CandleBatchWriter candleBatchWriter;
+    private final WebSocketStatusService statusService;
+    private final SystemMetricsService metricsService;
+    
+    // Explicit constructor
+    public OkexWebSocketClient(
+            SubscriptionConfigLoader subscriptionConfigLoader,
+            OkexMessageParser messageParser,
+            CandleBatchWriter candleBatchWriter,
+            WebSocketStatusService statusService,
+            SystemMetricsService metricsService) {
+        this.webSocketClient = new StandardWebSocketClient();
+        this.objectMapper = new ObjectMapper();
+        this.subscriptionConfigLoader = subscriptionConfigLoader;
+        this.messageParser = messageParser;
+        this.candleBatchWriter = candleBatchWriter;
+        this.statusService = statusService;
+        this.metricsService = metricsService;
+    }
 
     @Value("${websocket.okex.url}")
     private String okexWebSocketUrl;
@@ -76,6 +94,10 @@ public class OkexWebSocketClient {
 
     @PostConstruct
     public void init() {
+        // Initialize status service
+        statusService.updateUrl(okexWebSocketUrl);
+        statusService.updateConnectionStatus("DISCONNECTED");
+        
         // 启动时加载一次配置并建立订阅
         SubscriptionConfig config = subscriptionConfigLoader.loadCurrentConfig();
         if (config != null) {
@@ -130,12 +152,16 @@ public class OkexWebSocketClient {
             if (session != null && session.isOpen()) {
                 return;
             }
+            
+            statusService.updateConnectionStatus("CONNECTING");
+            
             WebSocketHandler handler = new OkexWebSocketHandler();
             this.session = webSocketClient.doHandshake(handler, okexWebSocketUrl).get();
             log.info("Connected to OKEx WebSocket: {}", okexWebSocketUrl);
             onConnected();
         } catch (Exception e) {
             log.error("Failed to connect to OKEx WebSocket", e);
+            statusService.updateConnectionStatus("ERROR");
             scheduleReconnect();
             throw new IllegalStateException("Cannot connect to OKEx WebSocket", e);
         }
@@ -206,6 +232,11 @@ public class OkexWebSocketClient {
     private void onConnected() {
         reconnectAttempts = 0;
         lastMessageTimestamp = System.currentTimeMillis();
+        
+        // Update status service
+        statusService.updateConnectionStatus("CONNECTED");
+        statusService.updateReconnectAttempts(0);
+        
         if (currentConfig != null) {
             // After reconnect, re-subscribe all current pairs
             sendSubscribeMessages(buildAllPairs(currentConfig));
@@ -214,6 +245,10 @@ public class OkexWebSocketClient {
 
     private void onConnectionLost(String reason, Throwable exception) {
         log.warn("WebSocket connection lost: {}", reason, exception);
+        
+        // Update status service
+        statusService.updateConnectionStatus("DISCONNECTED");
+        
         WebSocketSession currentSession = this.session;
         if (currentSession != null) {
             try {
@@ -263,16 +298,43 @@ public class OkexWebSocketClient {
         reconnectAttempts++;
         if (reconnectAttempts > maxReconnectAttempts) {
             log.error("Max reconnect attempts ({}) exceeded, will not attempt further reconnects", maxReconnectAttempts);
+            statusService.updateConnectionStatus("ERROR");
             return;
         }
         long fib = fibonacci(reconnectAttempts);
         long delay = initialReconnectIntervalMs * fib;
         log.warn("Scheduling reconnect attempt {} in {} ms (fib={} )", reconnectAttempts, delay, fib);
+        
+        // Update status service
+        statusService.updateConnectionStatus("RECONNECTING");
+        statusService.updateReconnectAttempts(reconnectAttempts);
+        statusService.updateCurrentReconnectDelay(delay);
+        
+        // Track reconnection start time
+        long reconnectStartTime = System.currentTimeMillis();
+        
         scheduler.schedule(() -> {
             try {
                 ensureConnected();
+                // Record successful reconnection
+                long duration = System.currentTimeMillis() - reconnectStartTime;
+                statusService.recordReconnection(
+                    "scheduled-reconnect",
+                    reconnectAttempts,
+                    true,
+                    duration,
+                    null
+                );
             } catch (Exception e) {
                 log.error("Reconnect attempt {} failed", reconnectAttempts, e);
+                // Record failed reconnection
+                statusService.recordReconnection(
+                    "scheduled-reconnect",
+                    reconnectAttempts,
+                    false,
+                    null,
+                    e.getMessage()
+                );
             }
         }, delay, TimeUnit.MILLISECONDS);
     }
@@ -346,6 +408,10 @@ public class OkexWebSocketClient {
         public void afterConnectionEstablished(WebSocketSession session) {
             log.info("OKEx WebSocket connection established");
             lastMessageTimestamp = System.currentTimeMillis();
+            
+            // Update status service
+            statusService.updateConnectionStatus("CONNECTED");
+            statusService.updateLastMessageTime();
         }
 
         @Override
@@ -354,6 +420,11 @@ public class OkexWebSocketClient {
                 String payload = ((TextMessage) message).getPayload();
                 log.debug("Received message: {}", payload);
                 lastMessageTimestamp = System.currentTimeMillis();
+                
+                // Update metrics and status
+                statusService.updateLastMessageTime();
+                metricsService.incrementMessageCount();
+                metricsService.recordDataProcessed(payload.length());
 
                 // OKEx heartbeat pong handling
                 if ("pong".equalsIgnoreCase(payload.trim())) {
@@ -378,12 +449,32 @@ public class OkexWebSocketClient {
         @Override
         public void handleTransportError(WebSocketSession session, Throwable exception) {
             log.error("WebSocket transport error", exception);
+            
+            // Record transport error in reconnection history
+            statusService.recordReconnection(
+                "transport-error",
+                reconnectAttempts,
+                false,
+                null,
+                exception.getMessage()
+            );
+            
             onConnectionLost("transport-error", exception);
         }
 
         @Override
         public void afterConnectionClosed(WebSocketSession session, org.springframework.web.socket.CloseStatus closeStatus) {
             log.info("WebSocket connection closed: {}", closeStatus);
+            
+            // Record connection closure in reconnection history
+            statusService.recordReconnection(
+                "connection-closed",
+                reconnectAttempts,
+                false,
+                null,
+                closeStatus.toString()
+            );
+            
             onConnectionLost("connection-closed", null);
         }
 
