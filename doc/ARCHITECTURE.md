@@ -436,32 +436,136 @@ flowchart TD
     B --> C{检查缓存}
     C -->|命中| D[返回缓存结果]
     C -->|未命中| E[从MongoDB获取蜡烛数据]
-    E --> F{判断指标类型}
-    F -->|RSI| G[调用RSI计算器]
-    F -->|BOLL| H[调用BOLL计算器]
-    F -->|MACD| I[调用MACD计算器]
-    F -->|PINBAR| J[调用Pinbar计算器]
-    G --> K[计算结果]
-    H --> K
-    I --> K
-    J --> K
-    K --> L[更新缓存]
-    L --> M[返回计算结果]
+    E --> F[数据完整性检查AOP切面]
+    F -->|数据完整连续| G{判断指标类型}
+    F -->|数据不完整/不连续| H[从OKEx REST API获取数据]
+    H --> I[更新MongoDB]
+    I --> G
+    G -->|RSI| J[调用RSI计算器]
+    G -->|BOLL| K[调用BOLL计算器]
+    G -->|MACD| L[调用MACD计算器]
+    G -->|PINBAR| M[调用Pinbar计算器]
+    J --> N[计算结果]
+    K --> N
+    L --> N
+    M --> N
+    N --> O[更新缓存]
+    O --> P[返回计算结果]
 ```
 
-**类结构**：
+#### 2.3.5.1 蜡烛图数据完整性检查AOP切面
 
-```java
-// 文件路径: okex-server/src/main/java/com/okex/server/service/CalculationEngine.java
-@Service
-@RequiredArgsConstructor
-public class CalculationEngine {
-    // 依赖注入各种指标计算器
-    private final RSICalculator rsiCalculator;
-    private final BOLLCalculator bollCalculator;
-    private final MACDCalculator macdCalculator;
-    private final PinbarCalculator pinbarCalculator;
-  
+**功能说明**：
+为了解决开发环境中WebSocket订阅数据可能不连续或数量不足的问题，系统实现了AOP切面机制，在技术指标计算前自动检查蜡烛图数据的完整性和连续性。当发现数据不满足要求时，自动从OKEx REST API获取完整数据并更新到MongoDB，确保指标计算的准确性。
+
+**核心功能**：
+1. **数据数量检查**：验证从MongoDB获取的蜡烛图数据数量是否满足指标计算需求
+2. **时间连续性检查**：根据时间维度（如1H、4H等）验证蜡烛图时间戳间隔是否正确
+3. **自动数据补充**：当数据不完整或不连续时，从OKEx REST API获取最多300条最新数据
+4. **数据更新机制**：将获取的完整数据重新写入或更新到MongoDB
+
+**时间连续性检查规则**：
+| 时间维度 | 预期间隔（秒） |
+|----------|----------------|
+| 1m       | 60             |
+| 1H       | 3600           |
+
+**OKEx REST API调用**：
+- API端点：`GET /api/v5/market/candles`
+- 请求参数：`instId`(交易对), `bar`(时间维度), `limit`(最多300条)
+- 响应处理：将API返回的蜡烛图数据转换为系统内部Candle对象格式
+
+**架构流程**：
+
+```mermaid
+flowchart TD
+    A[AOP切面触发] --> B[获取从MongoDB查询的蜡烛数据]
+    B --> C[检查数据数量是否满足要求]
+    C -->|数量不足| D[标记数据不完整]
+    C -->|数量充足| E[检查时间连续性]
+    E -->|时间不连续| D
+    E -->|时间连续| F[数据验证通过]
+    D --> G[构造REST API请求参数]
+    G --> H[调用OKEx REST API获取数据]
+    H --> I[解析API响应数据]
+    I --> J[将数据转换为Candle对象]
+    J --> K[更新MongoDB数据]
+    K --> L[返回完整数据给计算引擎]
+    F --> L
+```
+
+**实现逻辑**：
+
+系统采用AOP（面向切面编程）方式实现数据完整性检查，主要包含以下核心组件和流程：
+
+```mermaid
+classDiagram
+    class CandleDataIntegrityAspect {
+        + OkexRestClient okexRestClient
+        + MongoRepository mongoRepository
+        + checkCandleDataIntegrity()
+        + checkDataCompleteness()
+        + checkTimeContinuity()
+        + fetchCompleteDataFromApi()
+    }
+    
+    class OkexRestClient {
+        + getCandles(symbol, interval, limit)
+    }
+    
+    class MongoRepository {
+        + saveCandlesBatch(candles)
+    }
+    
+    CandleDataIntegrityAspect --> OkexRestClient
+    CandleDataIntegrityAspect --> MongoRepository
+```
+
+**核心流程**：
+
+```mermaid
+sequenceDiagram
+    participant Client as 计算引擎
+    participant Aspect as AOP切面
+    participant MongoDB as 数据库
+    participant OKEx as OKEx REST API
+    
+    Client->>Aspect: 请求蜡烛图数据
+    Aspect->>MongoDB: 查询数据
+    MongoDB-->>Aspect: 返回原始数据
+    Aspect->>Aspect: 检查数据数量
+    Aspect->>Aspect: 检查时间连续性
+    
+    alt 数据完整连续
+        Aspect-->>Client: 返回原始数据
+    else 数据不完整/不连续
+        Aspect->>OKEx: 请求完整数据(最多300条)
+        OKEx-->>Aspect: 返回完整数据
+        Aspect->>MongoDB: 更新数据
+        MongoDB-->>Aspect: 确认更新
+        Aspect-->>Client: 返回完整数据
+    end
+    
+    Client->>Client: 执行指标计算
+```
+
+**组件说明**：
+
+1. **CandleDataIntegrityAspect**：
+   - 作为AOP切面拦截技术指标计算方法
+   - 检查数据完整性和连续性
+   - 调用REST API获取完整数据
+   - 更新MongoDB数据库
+
+2. **OkexRestClient**：
+   - 封装OKEx REST API调用
+   - 负责获取指定交易对和时间维度的完整蜡烛图数据
+
+3. **MongoRepository**：
+   - 提供数据库操作接口
+   - 支持批量保存蜡烛图数据
+    
+```java  
     // 核心计算方法
     public IndicatorResult calculateRSI(java.util.List<Candle> candles, IndicatorParams params) {
         /* 调用RSI计算器进行计算 */
