@@ -24,6 +24,12 @@ service IndicatorService {
   // 批量MACD计算
   rpc CalculateMACDBatch(BatchMACDRequest) returns (stream IndicatorResponse);
   
+  // Pinbar计算
+  rpc CalculatePinbar(PinbarRequest) returns (IndicatorResponse);
+  
+  // 批量Pinbar计算
+  rpc CalculatePinbarBatch(BatchPinbarRequest) returns (stream IndicatorResponse);
+  
   // 实时指标流
   rpc StreamIndicators(StreamRequest) returns (stream IndicatorResponse);
 }
@@ -71,6 +77,18 @@ message BatchMACDRequest {
   repeated MACDRequest requests = 1;
 }
 
+// Pinbar请求
+message PinbarRequest {
+  BaseRequest base = 1;
+  double body_ratio_threshold = 2;
+  double wick_ratio_threshold = 3;
+}
+
+// 批量Pinbar请求
+message BatchPinbarRequest {
+  repeated PinbarRequest requests = 1;
+}
+
 // 流式请求
 message StreamRequest {
   string symbol = 1;
@@ -82,6 +100,7 @@ enum IndicatorType {
   RSI = 0;
   BOLL = 1;
   MACD = 2;
+  PINBAR = 3;
 }
 
 // 指标响应
@@ -107,4 +126,11 @@ message IndicatorResponse {
   optional double macd_line = 14;
   optional double macd_signal = 15;
   optional double macd_histogram = 16;
+  
+  // Pinbar结果
+  optional bool is_pinbar = 17;
+  optional bool is_bullish = 18;
+  optional double body_ratio = 19;
+  optional double upper_wick_ratio = 20;
+  optional double lower_wick_ratio = 21;
 }
